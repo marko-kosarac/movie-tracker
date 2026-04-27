@@ -1,23 +1,43 @@
+import { useState } from "react";
 import { movies } from "../movies";
 import MovieCard from "../components/MovieCard";
 
-function Movies({ watchlist, addToWatchlist }) {
+function Movies({ watchlist, watched, addToWatchlist, markAsWatched }) {
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredMovies = movies.filter((movie) =>
+    movie.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div>
-      <h1>Movies</h1>
+    <div className="page">
+      <h1 className="page-title">Movies</h1>
 
-      {movies.map((movie) => {
-        const isInWatchlist = watchlist.some((item) => item.id === movie.id);
+      <input
+        className="search-input"
+        type="text"
+        placeholder="Search movies..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
 
-        return (
-          <MovieCard
-            key={movie.id}
-            movie={movie}
-            isInWatchlist={isInWatchlist}
-            onAdd={addToWatchlist}
-          />
-        );
-      })}
+      <div className="movies-grid">
+        {filteredMovies.map((movie) => {
+          const isInWatchlist = watchlist.some((item) => item.id === movie.id);
+          const isWatched = watched.some((item) => item.id === movie.id);
+
+          return (
+            <MovieCard
+              key={movie.id}
+              movie={movie}
+              isInWatchlist={isInWatchlist}
+              isWatched={isWatched}
+              onAdd={addToWatchlist}
+              onMarkWatched={markAsWatched}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

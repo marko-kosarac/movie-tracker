@@ -1,24 +1,51 @@
 import { Link } from "react-router-dom";
 
-function MovieCard({ movie, isInWatchlist, onAdd, onRemove, showRemove = false }) {
+function MovieCard({
+  movie,
+  isInWatchlist,
+  isWatched,
+  onAdd,
+  onRemove,
+  onMarkWatched,
+  showRemove = false,
+}) {
   return (
-    <div>
-      <h3>
-        {movie.title} ({movie.year})
-      </h3>
+    <Link to={`/movies/${movie.id}`} className="movie-card-link">
+      <div className="movie-card">
+        <img src={movie.poster} alt={movie.title} className="movie-poster" />
 
-      <Link to={`/movies/${movie.id}`}>View Details</Link>
+        {isWatched && <span className="status-badge">Watched</span>}
 
-      <div>
-        {showRemove ? (
-          <button onClick={() => onRemove(movie.id)}>Remove</button>
-        ) : (
-          <button onClick={() => onAdd(movie)} disabled={isInWatchlist}>
-            {isInWatchlist ? "Added" : "Add to Watchlist"}
-          </button>
-        )}
+        <div className="movie-overlay">
+          <h3 className="movie-title">{movie.title}</h3>
+          <p className="movie-meta">
+            {movie.year} • ⭐ {movie.rating}
+          </p>
+        </div>
+
+        <div className="card-actions" onClick={(e) => e.preventDefault()}>
+          {showRemove ? (
+            <>
+              <button onClick={() => onRemove(movie.id)}>Remove</button>
+              <button onClick={() => onMarkWatched(movie)}>Watched</button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => onAdd(movie)}
+                disabled={isInWatchlist || isWatched}
+              >
+                {isInWatchlist ? "Added" : isWatched ? "Watched" : "Add"}
+              </button>
+
+              <button onClick={() => onMarkWatched(movie)} disabled={isWatched}>
+                {isWatched ? "Watched" : "Mark"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
