@@ -1,17 +1,53 @@
 import { useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, useNavigate, Navigate, useLocation } from "react-router-dom";
 
 function Register() {
+  const navigate = useNavigate();
   const location = useLocation();
 
   if (!location.state?.fromLogin) {
     return <Navigate to="/" />;
   }
 
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
 
   const passwordsMatch = password === confirmPassword;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    if (!passwordsMatch) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || "Registration failed");
+      }
+
+      navigate("/"); // nazad na login
+    } catch (err) {
+      setError(err.message);
+    }
+  }
 
   return (
     <div className="auth-page">
@@ -24,12 +60,12 @@ function Register() {
       >
         <div className="auth-image-overlay">
           <h1>CineTrack</h1>
-          <h2>Start building your personal movie collection.</h2>
+          <h2>Start building your movie collection.</h2>
         </div>
       </div>
 
       <div className="auth-panel">
-        <form className="auth-box">
+        <form className="auth-box" onSubmit={handleSubmit}>
           <h2>Create account</h2>
 
           <p className="auth-subtitle">
@@ -38,21 +74,31 @@ function Register() {
 
           <div className="form-group">
             <label>Username</label>
-            <input type="text" placeholder="Enter username" />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter username"
+            />
           </div>
 
           <div className="form-group">
             <label>Email</label>
-            <input type="email" placeholder="Enter email" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter email"
+            />
           </div>
 
           <div className="form-group">
             <label>Password</label>
             <input
               type="password"
-              placeholder="Enter password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
             />
           </div>
 
@@ -60,17 +106,18 @@ function Register() {
             <label>Confirm password</label>
             <input
               type="password"
-              placeholder="Repeat password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repeat password"
             />
-
-            {!passwordsMatch && confirmPassword && (
-              <p className="error-text">Passwords do not match</p>
-            )}
           </div>
 
-          <button className="auth-button" disabled={!passwordsMatch}>
+          {error && <p className="error-text">{error}</p>}
+
+          <button
+            className="auth-button"
+            disabled={!passwordsMatch || !username}
+          >
             Register
           </button>
 
