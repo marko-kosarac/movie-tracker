@@ -9,7 +9,9 @@ function Home() {
       </video> */}
 
       <div className="overlay"></div>
-
+        <video autoPlay muted loop playsInline className="background-video">
+          <source src={bgVideo} type="video/mp4" />
+        </video>
       <div className="hero">
         <h1 className="hero-title">Movie Tracker</h1>
         <p className="hero-text">
