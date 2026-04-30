@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 from app.models.user import User
-from app.routes import auth
+from app.routes import auth, movies
+from app.models.movie import Movie
 
 app = FastAPI(title="CineTrack API")
 
@@ -17,7 +18,9 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
+
 app.include_router(auth.router)
+app.include_router(movies.router)
 
 
 @app.get("/")

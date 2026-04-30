@@ -205,23 +205,33 @@ button:disabled {
 }
 
 .movie-card {
-  position: relative;
-  height: 360px;
   border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
   background: #111827;
   transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column; /* 👈 ključ */
 }
 
 .movie-card:hover {
   transform: translateY(-5px);
 }
 
+/* POSTER */
+
+.poster-wrapper {
+  position: relative;
+  width: 100%;
+  height: 330px; /* 👈 fiksna visina slike */
+  overflow: hidden;
+}
+
 .movie-poster {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
   transition: transform 0.35s ease;
 }
 
@@ -229,35 +239,25 @@ button:disabled {
   transform: scale(1.06);
 }
 
-.movie-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 18px;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+.movie-info {
+  padding: 12px;
+  background: #111827;
 }
 
 .movie-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
+  margin: 0 0 6px;
+  font-size: 16px;
+  line-height: 1.25;
+  color: white;
 }
 
 .movie-meta {
-  margin: 8px 0 0;
+  margin: 0;
   font-size: 14px;
   color: #d1d5db;
 }
 
-.movie-year {
-  color: #94a3b8;
-}
-
-.movie-rating {
-  color: #facc15;
-  font-weight: 800;
-}
+/* BADGE */
 
 .status-badge {
   position: absolute;
@@ -271,6 +271,8 @@ button:disabled {
   font-size: 12px;
   font-weight: 800;
 }
+
+/* BUTTONS */
 
 .card-actions {
   position: absolute;
@@ -293,6 +295,7 @@ button:disabled {
   font-size: 12px;
 }
 
+
 /* LIBRARY */
 
 .section-title {
@@ -306,14 +309,118 @@ button:disabled {
   font-size: 17px;
 }
 
-/* DETAILS */
+.movie-details-hero {
+  min-height: calc(100vh - 72px);
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  position: relative;
+  overflow: hidden;
+}
 
-.details-card {
-  max-width: 650px;
-  background: linear-gradient(180deg, #1e293b, #111827);
-  border: 1px solid #334155;
-  border-radius: 24px;
-  padding: 32px;
+.movie-details-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.05);
+  z-index: 0;
+}
+
+.movie-details-gradient {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 72px);
+  background:
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0.85) 0%,
+      rgba(0, 0, 0, 0.6) 32%,
+      rgba(0, 0, 0, 0.22) 62%,
+      rgba(0, 0, 0, 0.02) 100%
+    ),
+    linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.75) 0%,
+      rgba(0, 0, 0, 0.25) 45%,
+      rgba(0, 0, 0, 0.02) 100%
+    );
+  display: flex;
+  align-items: flex-end;
+}
+
+.movie-details-content {
+  max-width: 720px;
+  padding: 0 0 80px 64px;
+  animation: detailsFadeIn 0.6s ease;
+}
+
+.movie-details-content h1 {
+  font-size: 72px;
+  margin: 0 0 16px;
+  text-shadow: 0 4px 22px rgba(0, 0, 0, 0.8);
+}
+
+.movie-details-meta {
+  font-size: 18px;
+  color: #e5e7eb;
+  margin-bottom: 24px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+}
+
+.movie-details-actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 30px;
+}
+
+.action-btn {
+  padding: 14px 22px;
+  font-size: 15px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  transition: all 0.25s ease;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.action-btn.active {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.movie-details-section {
+  margin-top: 18px;
+}
+
+.movie-details-section h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.movie-details-section p {
+  margin: 0;
+  color: #d1d5db;
+  line-height: 1.6;
+  font-size: 16px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+@keyframes detailsFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* AUTH */
@@ -714,3 +821,4 @@ button:disabled {
   height: 1px;
   background: #334155;
 }
+

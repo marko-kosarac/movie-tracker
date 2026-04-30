@@ -9,21 +9,33 @@ function MovieCard({
   onMarkWatched,
   showRemove = false,
 }) {
+  const handleActionClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   return (
     <Link to={`/movies/${movie.id}`} className="movie-card-link">
       <div className="movie-card">
-        <img src={movie.poster} alt={movie.title} className="movie-poster" />
+        <div className="poster-wrapper">
+          <img
+            src={movie.poster}
+            alt={movie.title}
+            className="movie-poster"
+          />
 
-        {isWatched && <span className="status-badge">Watched</span>}
+          {isWatched && <span className="status-badge">Watched</span>}
+        </div>
 
-        <div className="movie-overlay">
+        <div className="movie-info">
           <h3 className="movie-title">{movie.title}</h3>
+
           <p className="movie-meta">
-            {movie.year} • ⭐ {movie.rating}
+            {movie.year} • ⭐ {movie.imdb_rating}
           </p>
         </div>
 
-        <div className="card-actions" onClick={(e) => e.preventDefault()}>
+        <div className="card-actions" onClick={handleActionClick}>
           {showRemove ? (
             <>
               <button onClick={() => onRemove(movie.id)}>Remove</button>
@@ -31,16 +43,7 @@ function MovieCard({
             </>
           ) : (
             <>
-              <button
-                onClick={() => onAdd(movie)}
-                disabled={isInWatchlist || isWatched}
-              >
-                {isInWatchlist ? "Added" : isWatched ? "Watched" : "Add"}
-              </button>
 
-              <button onClick={() => onMarkWatched(movie)} disabled={isWatched}>
-                {isWatched ? "Watched" : "Mark"}
-              </button>
             </>
           )}
         </div>
