@@ -10,10 +10,10 @@ from app.schemas.movie import MovieCreate, MovieResponse
 router = APIRouter(prefix="/movies", tags=["Movies"])
 
 
-@router.get("/", response_model=List[MovieResponse])
-def get_movies(db: Session = Depends(get_db)):
-    movies = db.query(Movie).all()
-    return movies
+# @router.get("/", response_model=List[MovieResponse])
+# def get_movies(db: Session = Depends(get_db)):
+#     movies = db.query(Movie).all()
+#     return movies
 
 
 @router.get("/{movie_id}", response_model=MovieResponse)

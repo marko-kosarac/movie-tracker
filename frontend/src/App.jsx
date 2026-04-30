@@ -7,6 +7,7 @@ import {
   Route,
   Link,
   useLocation,
+  useNavigate,
   Navigate,
 } from "react-router-dom";
 
@@ -16,6 +17,7 @@ import Home from "./pages/Home";
 import Movies from "./pages/Movies";
 import MovieDetails from "./pages/MovieDetails";
 import Library from "./pages/Library";
+
 import avatar0 from "./assets/avatars/default.png";
 import avatar1 from "./assets/avatars/boy.png";
 import avatar2 from "./assets/avatars/boy2.png";
@@ -44,9 +46,14 @@ const avatarMap = {
 
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("token");
+  const { user, loading } = useAuth();
 
-  if (!token) {
-    return <Navigate to="/" />;
+  if (loading) {
+    return <div className="page">Loading...</div>;
+  }
+
+  if (!token || !user) {
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -55,11 +62,16 @@ function ProtectedRoute({ children }) {
 function AppContent() {
   const [watchlist, setWatchlist] = useState([]);
   const [watched, setWatched] = useState([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchValue, setSearchValue] = useState("");
 
   const location = useLocation();
+  const isMoviesPage = location.pathname === "/movies";
+  const navigate = useNavigate();
   const isAuthPage = location.pathname === "/" || location.pathname === "/register";
   const { user } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
 
   function addToWatchlist(movie) {
     const exists = watchlist.some((item) => item.id === movie.id);
@@ -82,57 +94,104 @@ function AppContent() {
     setWatchlist(watchlist.filter((item) => item.id !== movie.id));
   }
 
-  function handleLogout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("token_type");
-    window.location.href = "/";
+function handleLogout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("token_type");
+
+  sessionStorage.removeItem("moviesGenre");
+  sessionStorage.removeItem("moviesSort");
+  sessionStorage.removeItem("moviesScroll");
+  sessionStorage.removeItem("moviesSearch");
+
+  setMenuOpen(false);
+
+  navigate("/", { replace: true });
+}
+
+  function handleSearch(e) {
+    if (e.key === "Enter" && searchValue.trim()) {
+      navigate(`/movies?search=${encodeURIComponent(searchValue.trim())}`);
+      setShowSearch(false);
+    }
+
+    if (e.key === "Escape") {
+      setShowSearch(false);
+      setSearchValue("");
+    }
   }
 
   return (
     <div className="app">
       {!isAuthPage && (
         <nav className="navbar">
-  <div className="nav-links">
-    <Link to="/home">Home</Link>
-    <Link to="/movies">Movies</Link>
-    <Link to="/library">Library</Link>
-  </div>
+          <div className="nav-links">
+            <Link to="/home">Home</Link>
+            <Link to="/movies">Movies</Link>
+            <Link to="/library">Library</Link>
+          </div>
 
-<div className="user-menu">
-  <button
-    className="user-menu-button"
-    onClick={() => setMenuOpen(!menuOpen)}
-  >
-    <img
-      src={avatarMap[user?.avatar] || avatarMap.avatar0}
-      alt="avatar"
-      className="navbar-avatar"
-    />
-  </button>
-
-  {menuOpen && (
-    <div className="dropdown-menu user-dropdown">
-      <Link
-        to="/profile"
-        className="dropdown-profile"
-        onClick={() => setMenuOpen(false)}
+<div className="nav-right">
+  {isMoviesPage && (
+  <div className="search-wrapper">
+    {!showSearch && (
+      <button
+        className="search-icon"
+        onClick={() => setShowSearch(true)}
       >
-        <img
-          src={avatarMap[user?.avatar] || avatarMap.avatar0}
-          alt="avatar"
-          className="dropdown-avatar"
-        />
+        🔍
+      </button>
+    )}
 
-        <span>{user?.username}</span>
-      </Link>
+    {showSearch && (
+      <input
+        className="nav-search-input"
+        autoFocus
+        type="text"
+        placeholder="Search movies..."
+        value={searchValue}
+        onChange={(e) => setSearchValue(e.target.value)}
+        onKeyDown={handleSearch}
+        onBlur={() => setShowSearch(false)}
+      />
+    )}
+  </div>)}
 
-      <div className="dropdown-separator"></div>
+  <div className="user-menu">
+    <button
+      className="user-menu-button"
+      onClick={() => setMenuOpen(!menuOpen)}
+    >
+      <img
+        src={avatarMap[user?.avatar] || avatarMap.avatar0}
+        alt="avatar"
+        className="navbar-avatar"
+      />
+    </button>
 
-      <button onClick={handleLogout}>Logout</button>
-    </div>
-  )}
+    {menuOpen && (
+      <div className="dropdown-menu user-dropdown">
+        <Link
+          to="/profile"
+          className="dropdown-profile"
+          onClick={() => setMenuOpen(false)}
+        >
+          <img
+            src={avatarMap[user?.avatar] || avatarMap.avatar0}
+            alt="avatar"
+            className="dropdown-avatar"
+          />
+
+          <span>{user?.username}</span>
+        </Link>
+
+        <div className="dropdown-separator"></div>
+
+        <button onClick={handleLogout}>Logout</button>
+      </div>
+    )}
+  </div>
 </div>
-</nav>
+        </nav>
       )}
 
       <Routes>
@@ -190,6 +249,7 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/profile"
           element={
