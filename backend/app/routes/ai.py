@@ -1,16 +1,14 @@
 from typing import List, Literal
-import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from dotenv import load_dotenv
-from openai import OpenAI
+from sqlalchemy.orm import Session
 
-load_dotenv()
+from app.database import get_db
+from app.ai.agent import handle_message
 
 router = APIRouter(prefix="/ai", tags=["AI"])
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 class ChatMessage(BaseModel):
@@ -22,72 +20,111 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
 
 
-SYSTEM_PROMPT = """
-            Ti si MovieTracker AI asistent.
-            Budi prijatan i strpljiv.
-            Pomažeš korisniku da pronađe filmove i serije.
-            Odgovaraj na srpskom jeziku.
-            Ne forsiraj filmove i serije, ali ako ti bude postavljeno pitanje nevezano za filmove i serije,
-            nemoj odgovoriti.
-            Izvini se korisniku i reci mu da nisi tu da bi odgovarao na takva pitanja, a zatim ga pitaj da li mu treba
-            pomoć vezano za filmove i serije.
-            Ako korisnik traži preporuku, predloži 3 opcije, osim ako naglasi koliko opcija želi.
-            Ako nemaš dovoljno informacija, postavi jedno kratko pitanje.
-            Nemoj tvrditi da je neki film u MovieTracker bazi ako ti baza nije data.
-            Ako nešto ne znaš ili nisi siguran, odgovori tako, ne izmišljaj podatke.
-            """
-
-
-def build_messages(request_messages: List[ChatMessage]):
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        }
-    ]
-
-    for message in request_messages:
-        messages.append(
-            {
-                "role": message.role,
-                "content": message.content,
-            }
-        )
-
-    return messages
+def get_last_user_message(messages: List[ChatMessage]) -> str:
+    for message in reversed(messages):
+        if message.role == "user":
+            return message.content
+    return ""
 
 
 @router.post("/chat")
-def chat_with_ai(request: ChatRequest):
-    messages = build_messages(request.messages)
+def chat_with_ai(request: ChatRequest, db: Session = Depends(get_db)):
+    user_message = get_last_user_message(request.messages)
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=messages,
-        max_tokens=500,
+    if not user_message:
+        return {"category": "ERROR", "answer": "Nisam dobio korisničku poruku."}
+
+    result = handle_message(
+        db=db,
+        user_message=user_message,
+        conversation_messages=request.messages[-10:],
     )
 
     return {
-        "answer": response.choices[0].message.content
+        "category": result["category"],
+        "answer": result["answer"],
     }
 
 
 @router.post("/chat-stream")
-def chat_with_ai_stream(request: ChatRequest):
-    messages = build_messages(request.messages)
+def chat_with_ai_stream(request: ChatRequest, db: Session = Depends(get_db)):
+    from app.ai.agent import handle_message_stream
 
-    def generate():
-        stream = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=messages,
-            max_tokens=500,
-            stream=True,
+    user_message = get_last_user_message(request.messages)
+
+    if not user_message:
+        return StreamingResponse(
+            iter(["Nisam dobio korisničku poruku."]),
+            media_type="text/plain",
         )
 
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
+    return StreamingResponse(
+        handle_message_stream(
+            db=db,
+            user_message=user_message,
+            conversation_messages=request.messages[-10:],
+        ),
+        media_type="text/plain",
+    )
 
-            if delta:
-                yield delta
 
-    return StreamingResponse(generate(), media_type="text/plain")
+@router.post("/index")
+def index_ai_database(db: Session = Depends(get_db)):
+    from app.ai.vector_store import index_movies_and_shows
+
+    index_movies_and_shows(db)
+
+    return {"message": "MovieTracker AI vector database indexed successfully."}
+
+
+@router.get("/stats")
+def ai_stats():
+    from app.ai.vector_store import get_collection_stats
+
+    return get_collection_stats()
+
+
+@router.get("/search-debug")
+def search_debug(query: str):
+    from app.ai.vector_store import semantic_search
+
+    results = semantic_search(query=query, limit=20, min_rating=0)
+
+    return {
+        "query": query,
+        "count": len(results),
+        "results": [
+            {
+                "id": item["id"],
+                "type": item["type"],
+                "title": item["title"],
+                "year": item["year"],
+                "imdb_rating": item["imdb_rating"],
+                "genre": item["genre"],
+            }
+            for item in results
+        ],
+    }
+
+
+@router.get("/plan-debug")
+def plan_debug(query: str, db: Session = Depends(get_db)):
+    from app.ai.agent import create_plan, database_search, semantic_only_search, hybrid_search
+
+    plan = create_plan(query)
+    mode = plan.get("mode")
+
+    if mode == "DATABASE_SEARCH":
+        results = database_search(db, plan)
+    elif mode == "SEMANTIC_SEARCH":
+        results = semantic_only_search(plan, query)
+    elif mode == "HYBRID_SEARCH":
+        results = hybrid_search(db, plan, query)
+    else:
+        results = []
+
+    return {
+        "query": query,
+        "plan": plan,
+        "results": results,
+    }

@@ -236,3 +236,6 @@ Thumbs.db
 # PostgreSQL local dumps/backups
 *.sql
 *.dump
+
+# ChromaDB vector store
+chroma_db/

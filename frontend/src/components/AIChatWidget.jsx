@@ -8,10 +8,10 @@ function AIChatWidget() {
   const [loading, setLoading] = useState(false);
 
   const chatBodyRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   const scrollToBottom = () => {
     if (!chatBodyRef.current) return;
-
     chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight;
   };
 
@@ -20,6 +20,10 @@ function AIChatWidget() {
   }, [messages, loading]);
 
   const closeChat = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
     setIsOpen(false);
     setMessage("");
     setMessages([]);
@@ -27,11 +31,13 @@ function AIChatWidget() {
   };
 
   const sendMessage = async () => {
-    if (!message.trim() || loading) return;
+    const trimmedMessage = message.trim();
+
+    if (!trimmedMessage || loading) return;
 
     const userMessage = {
       role: "user",
-      content: message,
+      content: trimmedMessage,
     };
 
     const updatedMessages = [...messages, userMessage];
@@ -47,6 +53,9 @@ function AIChatWidget() {
     setMessage("");
     setLoading(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const res = await fetch("http://127.0.0.1:8000/ai/chat-stream", {
         method: "POST",
@@ -56,7 +65,12 @@ function AIChatWidget() {
         body: JSON.stringify({
           messages: updatedMessages,
         }),
+        signal: controller.signal,
       });
+
+      if (!res.ok) {
+        throw new Error("AI request failed.");
+      }
 
       if (!res.body) {
         throw new Error("Streaming response body is empty.");
@@ -75,15 +89,23 @@ function AIChatWidget() {
         const chunk = decoder.decode(value, { stream: true });
         assistantText += chunk;
 
-        setMessages([
-          ...updatedMessages,
-          {
-            role: "assistant",
-            content: assistantText,
-          },
-        ]);
+        setMessages((currentMessages) => {
+          const newMessages = [...currentMessages];
+          const lastIndex = newMessages.length - 1;
+
+          if (lastIndex >= 0 && newMessages[lastIndex].role === "assistant") {
+            newMessages[lastIndex] = {
+              ...newMessages[lastIndex],
+              content: assistantText,
+            };
+          }
+
+          return newMessages;
+        });
       }
     } catch (err) {
+      if (err.name === "AbortError") return;
+
       console.error(err);
 
       setMessages([
@@ -95,6 +117,7 @@ function AIChatWidget() {
       ]);
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -148,6 +171,7 @@ function AIChatWidget() {
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Npr. Preporuči mi dobar triler..."
               rows={2}
+              disabled={loading}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -156,7 +180,7 @@ function AIChatWidget() {
               }}
             />
 
-            <button onClick={sendMessage} disabled={loading}>
+            <button onClick={sendMessage} disabled={loading || !message.trim()}>
               {loading ? "..." : "➤"}
             </button>
           </div>
