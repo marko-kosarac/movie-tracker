@@ -3,6 +3,7 @@ import { useAuth } from "./context/AuthContext";
 import Profile from "./pages/Profile";
 import TVShows from "./pages/TVShows";
 import TVShowDetails from "./pages/TVShowDetails";
+import AIChatWidget from "./components/AIChatWidget";
 import {
   BrowserRouter,
   Routes,
@@ -283,6 +284,7 @@ function handleLogout() {
           }
         />
       </Routes>
+      {!isAuthPage && <AIChatWidget />}
     </div>
   );
 }
