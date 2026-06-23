@@ -59,7 +59,7 @@ function Register() {
         }}
       >
         <div className="auth-image-overlay">
-          <h1>CineTrack</h1>
+          <h1>Movie Tracker</h1>
           <h2>Start building your movie collection.</h2>
         </div>
       </div>

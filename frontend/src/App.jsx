@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useAuth } from "./context/AuthContext";
 import Profile from "./pages/Profile";
+import TVShows from "./pages/TVShows";
+import TVShowDetails from "./pages/TVShowDetails";
 import {
   BrowserRouter,
   Routes,
@@ -127,6 +129,7 @@ function handleLogout() {
           <div className="nav-links">
             <Link to="/home">Home</Link>
             <Link to="/movies">Movies</Link>
+            <Link to="/tv-shows">TV Shows</Link>
             <Link to="/library">Library</Link>
           </div>
 
@@ -218,6 +221,27 @@ function handleLogout() {
                 addToWatchlist={addToWatchlist}
                 markAsWatched={markAsWatched}
               />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tv-shows"
+          element={
+            <ProtectedRoute>
+              <TVShows />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/tv-shows/:id"
+          element={
+            <ProtectedRoute>
+              <TVShowDetails 
+                watchlist={watchlist}
+                watched={watched}
+                addToWatchlist={addToWatchlist}
+                markAsWatched={markAsWatched}/>
             </ProtectedRoute>
           }
         />
