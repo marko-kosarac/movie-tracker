@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import TVShowCard from "../components/TVShowCard";
 
 function TVShows() {
@@ -13,6 +14,10 @@ function TVShows() {
   );
 
   const [loading, setLoading] = useState(true);
+
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const searchTerm = queryParams.get("search") || "";
 
   const tabsRef = useRef(null);
 
@@ -59,7 +64,11 @@ function TVShows() {
 
     let url = "";
 
-    if (selectedGenre === "Recommended") {
+    if (searchTerm.trim()) {
+      url = `http://127.0.0.1:8000/tv-shows/?search=${encodeURIComponent(
+        searchTerm.trim()
+      )}&sort=${sort}`;
+    } else if (selectedGenre === "Recommended") {
       url = "http://127.0.0.1:8000/tv-shows/?sort=rating&limit=30";
     } else {
       url = `http://127.0.0.1:8000/tv-shows/?sort=${sort}&genre=${encodeURIComponent(
@@ -71,7 +80,9 @@ function TVShows() {
       .then((res) => res.json())
       .then((data) => {
         const finalData =
-          selectedGenre === "Recommended" ? sortRecommendedShows(data) : data;
+          selectedGenre === "Recommended" && !searchTerm.trim()
+            ? sortRecommendedShows(data)
+            : data;
 
         setTvShows(finalData);
         setLoading(false);
@@ -92,13 +103,17 @@ function TVShows() {
 
   useEffect(() => {
     fetchTVShows();
-  }, [selectedGenre, sort]);
+  }, [selectedGenre, sort, searchTerm]);
 
   return (
     <div className="page">
       <div className="movies-header">
         <h1 className="page-title">
-          {selectedGenre === "Recommended" ? "Recommended TV Shows" : selectedGenre}
+          {searchTerm.trim()
+            ? `Search results for "${searchTerm}"`
+            : selectedGenre === "Recommended"
+            ? "Recommended TV Shows"
+            : selectedGenre}
         </h1>
 
         <select
@@ -114,27 +129,31 @@ function TVShows() {
         </select>
       </div>
 
-      <div className="genre-tabs-wrapper">
-        <button className="genre-arrow left" onClick={() => scrollGenres("left")}>
-          ‹
-        </button>
+      {!searchTerm.trim() && (
+        <div className="genre-tabs-wrapper">
+          <button className="genre-arrow left" onClick={() => scrollGenres("left")}>
+            ‹
+          </button>
 
-        <div className="genre-tabs" ref={tabsRef}>
-          {genres.map((genre) => (
-            <button
-              key={genre}
-              className={`genre-tab ${selectedGenre === genre ? "active" : ""}`}
-              onClick={() => setSelectedGenre(genre)}
-            >
-              {genre}
-            </button>
-          ))}
+          <div className="genre-tabs" ref={tabsRef}>
+            {genres.map((genre) => (
+              <button
+                key={genre}
+                className={`genre-tab ${
+                  selectedGenre === genre ? "active" : ""
+                }`}
+                onClick={() => setSelectedGenre(genre)}
+              >
+                {genre}
+              </button>
+            ))}
+          </div>
+
+          <button className="genre-arrow right" onClick={() => scrollGenres("right")}>
+            ›
+          </button>
         </div>
-
-        <button className="genre-arrow right" onClick={() => scrollGenres("right")}>
-          ›
-        </button>
-      </div>
+      )}
 
       {loading && <p className="empty-message">Loading TV shows...</p>}
 

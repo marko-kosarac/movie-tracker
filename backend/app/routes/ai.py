@@ -1,14 +1,28 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.security import decode_access_token
 from app.ai.agent import handle_message
 
 router = APIRouter(prefix="/ai", tags=["AI"])
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _optional_user_id(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> Optional[int]:
+    if not credentials:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if not payload:
+        return None
+    return payload.get("user_id")
 
 
 class ChatMessage(BaseModel):
@@ -28,7 +42,11 @@ def get_last_user_message(messages: List[ChatMessage]) -> str:
 
 
 @router.post("/chat")
-def chat_with_ai(request: ChatRequest, db: Session = Depends(get_db)):
+def chat_with_ai(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    user_id: Optional[int] = Depends(_optional_user_id),
+):
     user_message = get_last_user_message(request.messages)
 
     if not user_message:
@@ -38,6 +56,7 @@ def chat_with_ai(request: ChatRequest, db: Session = Depends(get_db)):
         db=db,
         user_message=user_message,
         conversation_messages=request.messages[-10:],
+        user_id=user_id,
     )
 
     return {
@@ -47,7 +66,11 @@ def chat_with_ai(request: ChatRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/chat-stream")
-def chat_with_ai_stream(request: ChatRequest, db: Session = Depends(get_db)):
+def chat_with_ai_stream(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    user_id: Optional[int] = Depends(_optional_user_id),
+):
     from app.ai.agent import handle_message_stream
 
     user_message = get_last_user_message(request.messages)
@@ -63,6 +86,7 @@ def chat_with_ai_stream(request: ChatRequest, db: Session = Depends(get_db)):
             db=db,
             user_message=user_message,
             conversation_messages=request.messages[-10:],
+            user_id=user_id,
         ),
         media_type="text/plain",
     )

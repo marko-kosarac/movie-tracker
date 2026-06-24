@@ -275,23 +275,68 @@ button:disabled {
 
 .card-actions {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  bottom: 54px;
+  left: 0;
+  right: 0;
   z-index: 2;
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transform: translateY(6px);
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  pointer-events: none;
 }
 
 .movie-card:hover .card-actions {
   opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
-.card-actions button {
-  padding: 8px 10px;
+.card-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
   font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  border: none;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.card-btn:hover {
+  transform: scale(1.04);
+}
+
+.card-btn--watched {
+  background: rgba(22, 163, 74, 0.88);
+  color: #fff;
+}
+
+.card-btn--watched:hover {
+  background: #16a34a;
+}
+
+.card-btn--remove {
+  background: rgba(15, 23, 42, 0.82);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.card-btn--remove:hover {
+  background: rgba(220, 38, 38, 0.78);
+  color: #fff;
+  border-color: transparent;
 }
 
 
@@ -306,6 +351,56 @@ button:disabled {
 .empty-message {
   color: #94a3b8;
   font-size: 17px;
+}
+
+.library-row-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.library-row {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 8px 0 14px;
+  flex: 1;
+}
+
+.library-row::-webkit-scrollbar {
+  display: none;
+}
+
+.library-row .movie-card-link {
+  flex-shrink: 0;
+  width: 200px;
+}
+
+.library-arrow {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(15, 23, 42, 0.9) !important;
+  color: white !important;
+  border: 1px solid #334155 !important;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.library-arrow:hover:not(:disabled) {
+  background: white !important;
+  color: #0f172a !important;
+  border-color: white !important;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
 }
 
 .movie-details-hero {
@@ -826,12 +921,12 @@ button:disabled {
   right: 48px;
   display: flex;
   align-items: center;
-  gap: 22px; /* 👈 više razmaka između search i profila */
+  gap: 22px;
 }
 
 .search-wrapper {
   position: relative;
-  width: 56px;   /* 👈 veći prostor za ikonu */
+  width: 56px;  
   height: 56px;
   display: flex;
   align-items: center;
@@ -844,7 +939,7 @@ button:disabled {
   padding: 0;
   background: transparent !important;
   color: white;
-  font-size: 26px; /* 👈 veća lupa */
+  font-size: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -856,7 +951,7 @@ button:disabled {
   top: 50%;
   transform: translateY(-50%);
   
-  width: 320px;   /* 👈 širi input */
+  width: 320px;  
   height: 44px;
 
   padding: 10px 14px;
@@ -887,7 +982,6 @@ button:disabled {
   right: auto;
 }
 
-/*filter*/
 .filters {
   display: flex;
   gap: 16px;
@@ -962,7 +1056,6 @@ button:disabled {
   transition: all 0.2s ease;
 }
 
-/* 🔥 OVO JE KLJUČ */
 .genre-tab:hover {
   background: white !important;
   color: #020617 !important;

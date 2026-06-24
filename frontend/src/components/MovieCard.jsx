@@ -14,8 +14,10 @@ function MovieCard({
     e.stopPropagation();
   };
 
+  const linkTo = movie.type === "tv_show" ? `/tv-shows/${movie.id}` : `/movies/${movie.id}`;
+
   return (
-    <Link to={`/movies/${movie.id}`} className="movie-card-link">
+    <Link to={linkTo} className="movie-card-link">
       <div className="movie-card">
         <div className="poster-wrapper">
           <img
@@ -29,24 +31,29 @@ function MovieCard({
 
         <div className="movie-info">
           <h3 className="movie-title">{movie.title}</h3>
-
           <p className="movie-meta">
             {movie.year} • ⭐ {movie.imdb_rating}
           </p>
         </div>
 
-        <div className="card-actions" onClick={handleActionClick}>
-          {showRemove ? (
-            <>
-              <button onClick={() => onRemove(movie.id)}>Remove</button>
-              <button onClick={() => onMarkWatched(movie)}>Watched</button>
-            </>
-          ) : (
-            <>
-
-            </>
-          )}
-        </div>
+        {showRemove && (
+          <div className="card-actions" onClick={handleActionClick}>
+            {!isWatched && (
+              <button
+                className="card-btn card-btn--watched"
+                onClick={() => onMarkWatched(movie)}
+              >
+                ✓ Watched
+              </button>
+            )}
+            <button
+              className="card-btn card-btn--remove"
+              onClick={() => onRemove(movie)}
+            >
+              ✕ Remove
+            </button>
+          </div>
+        )}
       </div>
     </Link>
   );

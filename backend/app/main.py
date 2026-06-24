@@ -3,8 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 from app.models.user import User
-from app.routes import auth, movies, tv_shows, ai;
-from app.models import Movie, TVShow, Season, Episode;
+from app.models.user_list import UserListItem
+from app.routes import auth, movies, tv_shows, ai
+from app.routes import lists as lists_router
+from app.models import Movie, TVShow, Season, Episode
 
 app = FastAPI(title="CineTrack API")
 
@@ -23,6 +25,7 @@ app.include_router(auth.router)
 app.include_router(movies.router)
 app.include_router(tv_shows.router)
 app.include_router(ai.router)
+app.include_router(lists_router.router)
 
 @app.get("/")
 def root():

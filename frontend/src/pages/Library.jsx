@@ -1,6 +1,36 @@
+import { useRef } from "react";
 import MovieCard from "../components/MovieCard";
 
-function Library({ watchlist, watched, removeFromWatchlist, markAsWatched }) {
+function HorizontalRow({ items, onRemove, onMarkWatched, isWatched = false }) {
+  const rowRef = useRef(null);
+
+  const scroll = (direction) => {
+    if (rowRef.current) {
+      rowRef.current.scrollBy({ left: direction === "left" ? -520 : 520, behavior: "smooth" });
+    }
+  };
+
+  return (
+    <div className="library-row-wrapper">
+      <button className="library-arrow" onClick={() => scroll("left")}>‹</button>
+      <div className="library-row" ref={rowRef}>
+        {items.map((item) => (
+          <MovieCard
+            key={`${item.type}_${item.id}`}
+            movie={item}
+            isWatched={isWatched}
+            showRemove={true}
+            onRemove={onRemove}
+            onMarkWatched={onMarkWatched}
+          />
+        ))}
+      </div>
+      <button className="library-arrow" onClick={() => scroll("right")}>›</button>
+    </div>
+  );
+}
+
+function Library({ watchlist, watched, removeFromWatchlist, removeFromWatched, markAsWatched }) {
   return (
     <div className="page">
       <h1 className="page-title">Library</h1>
@@ -8,37 +38,26 @@ function Library({ watchlist, watched, removeFromWatchlist, markAsWatched }) {
       <h2>Watchlist</h2>
 
       {watchlist.length === 0 ? (
-        <p className="empty-message">No movies in watchlist.</p>
+        <p className="empty-message">No items in watchlist.</p>
       ) : (
-        <div className="movies-grid">
-          {watchlist.map((movie) => (
-            <MovieCard
-              key={movie.id}
-              movie={movie}
-              showRemove={true}
-              onRemove={removeFromWatchlist}
-              onMarkWatched={markAsWatched}
-            />
-          ))}
-        </div>
+        <HorizontalRow
+          items={watchlist}
+          onRemove={removeFromWatchlist}
+          onMarkWatched={markAsWatched}
+        />
       )}
 
       <h2 className="section-title">Watched</h2>
 
       {watched.length === 0 ? (
-        <p className="empty-message">No watched movies yet.</p>
+        <p className="empty-message">No watched items yet.</p>
       ) : (
-        <div className="movies-grid">
-          {watched.map((movie) => (
-            <MovieCard
-              key={movie.id}
-              movie={movie}
-              isWatched={true}
-              onAdd={() => {}}
-              onMarkWatched={() => {}}
-            />
-          ))}
-        </div>
+        <HorizontalRow
+          items={watched}
+          isWatched={true}
+          onRemove={removeFromWatched}
+          onMarkWatched={() => {}}
+        />
       )}
     </div>
   );

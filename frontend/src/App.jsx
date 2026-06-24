@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUserLists } from "./hooks/useUserLists";
 import { useAuth } from "./context/AuthContext";
 import Profile from "./pages/Profile";
 import TVShows from "./pages/TVShows";
@@ -63,39 +64,20 @@ function ProtectedRoute({ children }) {
 }
 
 function AppContent() {
-  const [watchlist, setWatchlist] = useState([]);
-  const [watched, setWatched] = useState([]);
+  const { watchlist, watched, addToWatchlist, markAsWatched, removeFromWatchlist, removeFromWatched, refreshLists } = useUserLists();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [showSearch, setShowSearch] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
   const location = useLocation();
-  const isMoviesPage = location.pathname === "/movies";
+  const isSearchPage =
+  location.pathname === "/movies" ||
+  location.pathname === "/tv-shows";
   const navigate = useNavigate();
   const isAuthPage = location.pathname === "/" || location.pathname === "/register";
   const { user } = useAuth();
 
-  function addToWatchlist(movie) {
-    const exists = watchlist.some((item) => item.id === movie.id);
-    if (exists) return;
-
-    setWatchlist([...watchlist, movie]);
-  }
-
-  function removeFromWatchlist(movieId) {
-    setWatchlist(watchlist.filter((movie) => movie.id !== movieId));
-  }
-
-  function markAsWatched(movie) {
-    const alreadyWatched = watched.some((item) => item.id === movie.id);
-
-    if (!alreadyWatched) {
-      setWatched([...watched, movie]);
-    }
-
-    setWatchlist(watchlist.filter((item) => item.id !== movie.id));
-  }
 
 function handleLogout() {
   localStorage.removeItem("token");
@@ -112,16 +94,21 @@ function handleLogout() {
 }
 
   function handleSearch(e) {
-    if (e.key === "Enter" && searchValue.trim()) {
-      navigate(`/movies?search=${encodeURIComponent(searchValue.trim())}`);
-      setShowSearch(false);
-    }
+  if (e.key === "Enter" && searchValue.trim()) {
+    const targetPage =
+      location.pathname === "/tv-shows"
+        ? "/tv-shows"
+        : "/movies";
 
-    if (e.key === "Escape") {
-      setShowSearch(false);
-      setSearchValue("");
-    }
+    navigate(`${targetPage}?search=${encodeURIComponent(searchValue.trim())}`);
+    setShowSearch(false);
   }
+
+  if (e.key === "Escape") {
+    setShowSearch(false);
+    setSearchValue("");
+  }
+}
 
   return (
     <div className="app">
@@ -135,7 +122,7 @@ function handleLogout() {
           </div>
 
 <div className="nav-right">
-  {isMoviesPage && (
+  {isSearchPage && (
   <div className="search-wrapper">
     {!showSearch && (
       <button
@@ -151,7 +138,11 @@ function handleLogout() {
         className="nav-search-input"
         autoFocus
         type="text"
-        placeholder="Search movies..."
+        placeholder={
+            location.pathname === "/tv-shows"
+              ? "Search TV shows..."
+              : "Search movies..."
+          }
         value={searchValue}
         onChange={(e) => setSearchValue(e.target.value)}
         onKeyDown={handleSearch}
@@ -269,6 +260,7 @@ function handleLogout() {
                 watchlist={watchlist}
                 watched={watched}
                 removeFromWatchlist={removeFromWatchlist}
+                removeFromWatched={removeFromWatched}
                 markAsWatched={markAsWatched}
               />
             </ProtectedRoute>
@@ -284,7 +276,7 @@ function handleLogout() {
           }
         />
       </Routes>
-      {!isAuthPage && <AIChatWidget />}
+      {!isAuthPage && <AIChatWidget onListsChanged={refreshLists} />}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import "./AIChatWidget.css";
 import { useEffect, useRef, useState } from "react";
 
-function AIChatWidget() {
+function AIChatWidget({ onListsChanged }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -19,15 +20,26 @@ function AIChatWidget() {
     scrollToBottom();
   }, [messages, loading]);
 
+  const minimizeChat = () => {
+    setIsOpen(false);
+    setIsMinimized(true);
+  };
+
   const closeChat = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
     setIsOpen(false);
+    setIsMinimized(false);
     setMessage("");
     setMessages([]);
     setLoading(false);
+  };
+
+  const openChat = () => {
+    setIsOpen(true);
+    setIsMinimized(false);
   };
 
   const sendMessage = async () => {
@@ -57,10 +69,12 @@ function AIChatWidget() {
     abortControllerRef.current = controller;
 
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch("http://127.0.0.1:8000/ai/chat-stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           messages: updatedMessages,
@@ -103,6 +117,10 @@ function AIChatWidget() {
           return newMessages;
         });
       }
+
+      if (assistantText.startsWith("✓") && onListsChanged) {
+        onListsChanged();
+      }
     } catch (err) {
       if (err.name === "AbortError") return;
 
@@ -124,9 +142,13 @@ function AIChatWidget() {
   return (
     <>
       {!isOpen && (
-        <button className="ai-chat-button" onClick={() => setIsOpen(true)}>
+        <button
+          className={`ai-chat-button${isMinimized ? " ai-chat-button--active" : ""}`}
+          onClick={openChat}
+        >
           <span className="ai-chat-dot"></span>
           AI Assistant
+          {isMinimized && <span className="ai-chat-resumed-badge">●</span>}
         </button>
       )}
 
@@ -138,9 +160,14 @@ function AIChatWidget() {
               <p>Movie & TV assistant</p>
             </div>
 
-            <button onClick={closeChat} className="ai-chat-close">
-              ✕
-            </button>
+            <div className="ai-chat-header-actions">
+              <button onClick={minimizeChat} className="ai-chat-minimize" title="Minimize">
+                —
+              </button>
+              <button onClick={closeChat} className="ai-chat-close" title="Close">
+                ✕
+              </button>
+            </div>
           </div>
 
           <div className="ai-chat-body" ref={chatBodyRef}>

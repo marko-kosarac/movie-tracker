@@ -9,6 +9,8 @@ def search_movies_by_filters(
     genre: str | None = None,
     min_rating: float | None = None,
     year: int | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
     limit: int = 10,
 ):
     query = db.query(Movie)
@@ -21,6 +23,12 @@ def search_movies_by_filters(
 
     if year is not None:
         query = query.filter(Movie.year == year)
+
+    if year_from is not None:
+        query = query.filter(Movie.year >= year_from)
+
+    if year_to is not None:
+        query = query.filter(Movie.year <= year_to)
 
     movies = (
         query
@@ -49,6 +57,8 @@ def search_tv_shows_by_filters(
     genre: str | None = None,
     min_rating: float | None = None,
     year: int | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
     limit: int = 10,
 ):
     query = db.query(TVShow)
@@ -61,6 +71,12 @@ def search_tv_shows_by_filters(
 
     if year is not None:
         query = query.filter(TVShow.year == year)
+
+    if year_from is not None:
+        query = query.filter(TVShow.year >= year_from)
+
+    if year_to is not None:
+        query = query.filter(TVShow.year <= year_to)
 
     shows = (
         query
