@@ -1,4 +1,5 @@
 import { useState } from "react";
+import "./Navbar.css";
 import { useUserLists } from "./hooks/useUserLists";
 import { useAuth } from "./context/AuthContext";
 import Profile from "./pages/Profile";

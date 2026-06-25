@@ -1,5 +1,6 @@
 import "./AIChatWidget.css";
 import { useEffect, useRef, useState } from "react";
+import { API_URL } from "../config";
 
 function AIChatWidget({ onListsChanged }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -70,7 +71,7 @@ function AIChatWidget({ onListsChanged }) {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch("http://127.0.0.1:8000/ai/chat-stream", {
+      const res = await fetch(`${API_URL}/ai/chat-stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

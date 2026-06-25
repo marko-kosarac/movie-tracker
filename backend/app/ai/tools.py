@@ -11,9 +11,13 @@ def search_movies_by_filters(
     year: int | None = None,
     year_from: int | None = None,
     year_to: int | None = None,
+    title: str | None = None,
     limit: int = 10,
 ):
     query = db.query(Movie)
+
+    if title:
+        query = query.filter(Movie.title.ilike(f"%{title}%"))
 
     if genre:
         query = query.filter(Movie.genre.ilike(f"%{genre}%"))
@@ -59,9 +63,13 @@ def search_tv_shows_by_filters(
     year: int | None = None,
     year_from: int | None = None,
     year_to: int | None = None,
+    title: str | None = None,
     limit: int = 10,
 ):
     query = db.query(TVShow)
+
+    if title:
+        query = query.filter(TVShow.title.ilike(f"%{title}%"))
 
     if genre:
         query = query.filter(TVShow.genre.ilike(f"%{genre}%"))

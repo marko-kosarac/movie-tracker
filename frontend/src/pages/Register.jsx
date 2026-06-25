@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, Navigate, useLocation } from "react-router-dom";
+import { API_URL } from "../config";
+import "./Auth.css";
 
 function Register() {
   const navigate = useNavigate();
@@ -26,7 +28,7 @@ function Register() {
     }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/auth/register", {
+      const response = await fetch(`${API_URL}/auth/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -43,7 +45,7 @@ function Register() {
         throw new Error(data.detail || "Registration failed");
       }
 
-      navigate("/"); // nazad na login
+      navigate("/");
     } catch (err) {
       setError(err.message);
     }

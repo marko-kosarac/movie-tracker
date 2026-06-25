@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import TVShowCard from "../components/TVShowCard";
+import { API_URL } from "../config";
+import "./Movies.css";
 
 function TVShows() {
   const [tvShows, setTvShows] = useState([]);
@@ -65,13 +67,13 @@ function TVShows() {
     let url = "";
 
     if (searchTerm.trim()) {
-      url = `http://127.0.0.1:8000/tv-shows/?search=${encodeURIComponent(
+      url = `${API_URL}/tv-shows/?search=${encodeURIComponent(
         searchTerm.trim()
       )}&sort=${sort}`;
     } else if (selectedGenre === "Recommended") {
-      url = "http://127.0.0.1:8000/tv-shows/?sort=rating&limit=30";
+      url = `${API_URL}/tv-shows/?sort=rating&limit=30`;
     } else {
-      url = `http://127.0.0.1:8000/tv-shows/?sort=${sort}&genre=${encodeURIComponent(
+      url = `${API_URL}/tv-shows/?sort=${sort}&genre=${encodeURIComponent(
         selectedGenre
       )}`;
     }

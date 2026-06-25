@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { API_URL } from "../config";
+import "./Profile.css";
 
 import bg from "../assets/profile-pic3.jpg";
 
@@ -72,7 +74,7 @@ function Profile() {
     const token = localStorage.getItem("token");
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/auth/avatar", {
+      const response = await fetch(`${API_URL}/auth/avatar`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -112,7 +114,7 @@ function Profile() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/auth/change-password",
+        `${API_URL}/auth/change-password`,
         {
           method: "PUT",
           headers: {

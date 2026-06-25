@@ -1,6 +1,8 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { API_URL } from "../config";
+import "./Auth.css";
 
 function Login() {
   const navigate = useNavigate();
@@ -14,7 +16,7 @@ function Login() {
     e.preventDefault();
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/auth/login", {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -34,7 +36,7 @@ function Login() {
     localStorage.setItem("token", data.access_token);
     localStorage.setItem("token_type", data.token_type);
 
-      const me = await fetch("http://127.0.0.1:8000/auth/me", {
+      const me = await fetch(`${API_URL}/auth/me`, {
         headers: {
           Authorization: `Bearer ${data.access_token}`,
         },

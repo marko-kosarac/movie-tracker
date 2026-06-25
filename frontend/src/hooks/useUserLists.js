@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
-
-const API = "http://127.0.0.1:8000";
+import { API_URL as API } from "../config";
 
 function authHeaders() {
   const token = localStorage.getItem("token");

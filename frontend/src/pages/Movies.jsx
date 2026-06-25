@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import MovieCard from "../components/MovieCard";
+import { API_URL } from "../config";
+import "./Movies.css";
 
 function Movies({ watchlist, watched, addToWatchlist, markAsWatched }) {
   const [movies, setMovies] = useState([]);
@@ -68,13 +70,13 @@ function Movies({ watchlist, watched, addToWatchlist, markAsWatched }) {
     let url = "";
 
     if (searchTerm.trim()) {
-      url = `http://127.0.0.1:8000/movies/?search=${encodeURIComponent(
+      url = `${API_URL}/movies/?search=${encodeURIComponent(
         searchTerm.trim()
       )}&sort=${sort}`;
     } else if (selectedGenre === "Recommended") {
-      url = "http://127.0.0.1:8000/movies/?sort=rating&limit=30";
+      url = `${API_URL}/movies/?sort=rating&limit=30`;
     } else {
-      url = `http://127.0.0.1:8000/movies/?sort=${sort}&genre=${encodeURIComponent(
+      url = `${API_URL}/movies/?sort=${sort}&genre=${encodeURIComponent(
         selectedGenre
       )}`;
     }

@@ -1,12 +1,14 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { API_URL } from "../config";
+import "./MovieDetails.css";
 
 function MovieDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
   const { id } = useParams();
   const [movie, setMovie] = useState(null);
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:8000/movies/${id}`)
+    fetch(`${API_URL}/movies/${id}`)
       .then((res) => res.json())
       .then((data) => setMovie(data))
       .catch((err) => console.error(err));

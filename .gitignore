@@ -239,3 +239,4 @@ Thumbs.db
 
 # ChromaDB vector store
 chroma_db/
+chromadb_data/

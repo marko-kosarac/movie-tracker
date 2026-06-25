@@ -1,5 +1,8 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { API_URL } from "../config";
+import "./MovieDetails.css";
+import "./TVShowDetails.css";
 
 function TVShowDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
   const { id } = useParams();
@@ -7,7 +10,7 @@ function TVShowDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
 
   useEffect(() => {
-    fetch(`http://127.0.0.1:8000/tv-shows/${id}`)
+    fetch(`${API_URL}/tv-shows/${id}`)
       .then((res) => res.json())
       .then((data) => {
         setTvShow(data);

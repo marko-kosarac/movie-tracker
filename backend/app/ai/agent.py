@@ -3,7 +3,7 @@ import re
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
-from app.ai.vector_store import semantic_search
+from app.ai.vector_store import semantic_search, collection
 from app.ai.tools import search_movies_by_filters, search_tv_shows_by_filters
 from app.models.movie import Movie
 from app.models.tv_show import TVShow
@@ -12,12 +12,16 @@ from app.models.user_list import UserListItem
 client = OpenAI()
 
 
+MAX_HISTORY = 10
+VALID_MODES = {"DIRECT_ANSWER", "SEMANTIC_SEARCH", "DATABASE_SEARCH", "HYBRID_SEARCH", "ACTION"}
+
+
 def build_conversation_context(conversation_messages=None) -> str:
     if not conversation_messages:
         return ""
 
     lines = []
-    for msg in conversation_messages[-10:]:
+    for msg in conversation_messages[-MAX_HISTORY:]:
         role = getattr(msg, "role", None) or msg.get("role")
         content = getattr(msg, "content", None) or msg.get("content")
         if role and content:
@@ -55,11 +59,15 @@ Schema:
   "min_rating": number | null,
   "limit": integer,
   "action": "add_to_watchlist" | "add_to_watched" | "remove_from_watchlist" | "remove_from_watched" | "clear_watchlist" | "clear_watched" | null,
-  "title": string | null
+  "title": string | null,
+  "answer": string | null
 }
 
 Rules:
-- DIRECT_ANSWER is ONLY for: pure factual questions (e.g. "what year was Inception released?", "what is IMDb?"), greetings, or follow-up questions about titles already visible in the conversation context. NEVER use DIRECT_ANSWER when the user wants a list of recommendations.
+- DIRECT_ANSWER is ONLY for: pure factual questions about movies or TV shows from general knowledge (e.g. "what year was Inception released?", "what is IMDb?"), greetings, or follow-up questions about titles already visible in the conversation context. NEVER use DIRECT_ANSWER when the user wants a list of recommendations.
+- NEVER use DIRECT_ANSWER when the user asks whether a specific title exists in the MovieTracker database (e.g. "da li ima X", "is X in the database", "koji X filmovi su u bazi", "ima li X"). For these, use DATABASE_SEARCH so the actual database is checked. Set the "title" field to the movie/show name the user is asking about.
+- When mode is DIRECT_ANSWER AND the question is about movies, TV shows, IMDb, or MovieTracker app, OR it is a greeting — write your complete response in the "answer" field using the same language the user wrote in.
+- When mode is DIRECT_ANSWER but the question is unrelated to movies or TV (e.g. math, geography, science, general knowledge) — set answer to null so the system can properly redirect the user.
 - SEMANTIC_SEARCH for mood, vibe, atmosphere, similarity, or subgenre descriptions like "psychological thriller", "mind-bending", "dark", "mračno", "napeto", "tužno", "uzbudljivo", "romantično".
 - DATABASE_SEARCH for exact constraints: specific genre name, specific year, specific minimum rating — when there is no vague/semantic meaning.
 - HYBRID_SEARCH when the request combines any mood/atmosphere/vibe description with any exact filter (year, year range, rating). Also use HYBRID_SEARCH when a genre is mentioned alongside a year range or rating filter.
@@ -128,7 +136,10 @@ def create_plan(user_message: str, conversation_messages=None) -> dict:
     raw_plan = _strip_json_fence(response.choices[0].message.content)
 
     try:
-        return json.loads(raw_plan)
+        plan = json.loads(raw_plan)
+        if plan.get("mode") not in VALID_MODES:
+            plan["mode"] = "SEMANTIC_SEARCH"
+        return plan
     except json.JSONDecodeError:
         return {
             "mode": "SEMANTIC_SEARCH",
@@ -246,7 +257,8 @@ def database_search(db: Session, plan: dict) -> list[dict]:
     movie_limit = plan.get("movie_limit")
     tv_show_limit = plan.get("tv_show_limit")
 
-    filter_kwargs = dict(genre=_translate_genre(genre), min_rating=min_rating, year=year, year_from=year_from, year_to=year_to)
+    title = plan.get("title")
+    filter_kwargs = dict(genre=_translate_genre(genre), min_rating=min_rating, year=year, year_from=year_from, year_to=year_to, title=title)
 
     if movie_limit is not None or tv_show_limit is not None:
         results = []
@@ -507,6 +519,7 @@ def _llm_call(messages: list) -> str:
 
 
 def handle_message(db: Session, user_message: str, conversation_messages=None, user_id: int | None = None) -> dict:
+    conversation_messages = (conversation_messages or [])[-MAX_HISTORY:]
     plan = create_plan(user_message, conversation_messages)
     mode = plan.get("mode", "SEMANTIC_SEARCH")
 
@@ -515,21 +528,21 @@ def handle_message(db: Session, user_message: str, conversation_messages=None, u
     print("===================\n")
 
     if mode == "DIRECT_ANSWER":
-        answer = _llm_call(_build_direct_messages(user_message, conversation_messages))
+        answer = plan.get("answer") or _llm_call(_build_direct_messages(user_message, conversation_messages))
 
     elif mode == "DATABASE_SEARCH":
         items = database_search(db, plan)
         answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
 
     elif mode == "HYBRID_SEARCH":
-        items = hybrid_search(db, plan, user_message)
+        items = hybrid_search(db, plan, user_message) if collection.count() > 0 else database_search(db, plan)
         answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
 
     elif mode == "ACTION":
         answer = execute_action(db, user_id, plan)
 
-    else:  # SEMANTIC_SEARCH or unknown
-        items = semantic_only_search(plan, user_message)
+    else:
+        items = semantic_only_search(plan, user_message) if collection.count() > 0 else database_search(db, plan)
         answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
 
     return {"category": mode, "plan": plan, "answer": answer}
@@ -549,6 +562,7 @@ def _llm_stream(messages: list):
 
 
 def handle_message_stream(db: Session, user_message: str, conversation_messages=None, user_id: int | None = None):
+    conversation_messages = (conversation_messages or [])[-MAX_HISTORY:]
     plan = create_plan(user_message, conversation_messages)
     mode = plan.get("mode", "SEMANTIC_SEARCH")
 
@@ -557,19 +571,22 @@ def handle_message_stream(db: Session, user_message: str, conversation_messages=
     print("==========================\n")
 
     if mode == "DIRECT_ANSWER":
-        yield from _llm_stream(_build_direct_messages(user_message, conversation_messages))
+        if plan.get("answer"):
+            yield plan["answer"]
+        else:
+            yield from _llm_stream(_build_direct_messages(user_message, conversation_messages))
 
     elif mode == "DATABASE_SEARCH":
         items = database_search(db, plan)
         yield from _llm_stream(_build_context_messages(user_message, items, conversation_messages))
 
     elif mode == "HYBRID_SEARCH":
-        items = hybrid_search(db, plan, user_message)
+        items = hybrid_search(db, plan, user_message) if collection.count() > 0 else database_search(db, plan)
         yield from _llm_stream(_build_context_messages(user_message, items, conversation_messages))
 
     elif mode == "ACTION":
         yield execute_action(db, user_id, plan)
 
     else:
-        items = semantic_only_search(plan, user_message)
+        items = semantic_only_search(plan, user_message) if collection.count() > 0 else database_search(db, plan)
         yield from _llm_stream(_build_context_messages(user_message, items, conversation_messages))

@@ -1,13 +1,9 @@
+import "./Home.css";
 import bgVideo from "../assets/home-bg.mp4";
 
 function Home() {
   return (
     <div className="home-page">
-      
-      {/* <video autoPlay muted loop className="background-video">
-        <source src={bgVideo} type="video/mp4" />
-      </video> */}
-
       <div className="overlay"></div>
         <video autoPlay muted loop playsInline className="background-video">
           <source src={bgVideo} type="video/mp4" />

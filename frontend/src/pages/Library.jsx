@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import MovieCard from "../components/MovieCard";
+import "./Library.css";
 
 function HorizontalRow({ items, onRemove, onMarkWatched, isWatched = false }) {
   const rowRef = useRef(null);
