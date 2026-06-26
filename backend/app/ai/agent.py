@@ -34,6 +34,11 @@ LIST NAMES:
 - "lista gledanja" / "watchlist" = want to watch (future)
 - "lista gledanih" / "watched" = already watched (past)
 - "obriši sve" without specifying which list → clear_watchlist
+
+ACTION CONTENT TYPE: For add/remove actions, always set content_type when the user gives a hint:
+- "film", "movie" → content_type=movie
+- "serija", "series", "show", "emisija" → content_type=tv_show
+- If unclear or not mentioned → omit content_type entirely
 """
 
 ROUTER_TOOLS = [
@@ -123,7 +128,10 @@ ROUTER_TOOLS = [
             "description": "Add a movie or TV show to the user's watchlist (to watch later)",
             "parameters": {
                 "type": "object",
-                "properties": {"title": {"type": "string"}},
+                "properties": {
+                    "title": {"type": "string"},
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show"], "description": "Set to 'tv_show' if user says 'serija/series/show', 'movie' if user says 'film/movie'. Omit if unclear."},
+                },
                 "required": ["title"],
             },
         },
@@ -135,7 +143,10 @@ ROUTER_TOOLS = [
             "description": "Mark a movie or TV show as already watched",
             "parameters": {
                 "type": "object",
-                "properties": {"title": {"type": "string"}},
+                "properties": {
+                    "title": {"type": "string"},
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show"], "description": "Set to 'tv_show' if user says 'serija/series/show', 'movie' if user says 'film/movie'. Omit if unclear."},
+                },
                 "required": ["title"],
             },
         },
@@ -147,7 +158,10 @@ ROUTER_TOOLS = [
             "description": "Remove a specific movie or TV show from the watchlist",
             "parameters": {
                 "type": "object",
-                "properties": {"title": {"type": "string"}},
+                "properties": {
+                    "title": {"type": "string"},
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show"], "description": "Set to 'tv_show' if user says 'serija/series/show', 'movie' if user says 'film/movie'. Omit if unclear."},
+                },
                 "required": ["title"],
             },
         },
@@ -159,7 +173,10 @@ ROUTER_TOOLS = [
             "description": "Remove a specific movie or TV show from the watched list",
             "parameters": {
                 "type": "object",
-                "properties": {"title": {"type": "string"}},
+                "properties": {
+                    "title": {"type": "string"},
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show"], "description": "Set to 'tv_show' if user says 'serija/series/show', 'movie' if user says 'film/movie'. Omit if unclear."},
+                },
                 "required": ["title"],
             },
         },
@@ -332,12 +349,12 @@ def _args_to_plan(args: dict) -> dict:
 
 
 def _database_search(db: Session, plan: dict) -> list[dict]:
-    content_type = plan.get("content_type") or "both"
-    limit = plan.get("limit") or 5
+    content_type = plan.get("content_type")
+    limit = plan.get("limit")
     movie_limit = plan.get("movie_limit")
     tv_show_limit = plan.get("tv_show_limit")
     filter_kwargs = dict(
-        genre=_translate_genre(plan.get("genre")),
+        genre=plan.get("genre"),
         min_rating=plan.get("min_rating"),
         year=plan.get("year"),
         year_from=plan.get("year_from"),
@@ -378,7 +395,7 @@ def _hybrid_search(db: Session, plan: dict, user_message: str) -> list[dict]:
     year = plan.get("year")
     year_from = plan.get("year_from")
     year_to = plan.get("year_to")
-    genre = _translate_genre(plan.get("genre"))
+    genre = plan.get("genre")
     min_rating = plan.get("min_rating") if plan.get("min_rating") is not None else 6.0
     limit = plan.get("limit") or 5
     movie_limit = plan.get("movie_limit")
@@ -414,27 +431,31 @@ def _find_item_by_title(db: Session, title: str, content_type: str | None) -> di
     search_movie = content_type in (None, "both", "movie")
     search_show = content_type in (None, "both", "tv_show")
 
+    candidates = []
+
     if search_movie:
-        movie = (
-            db.query(Movie)
-            .filter(Movie.title.ilike(f"%{title}%"))
-            .order_by(Movie.imdb_rating.desc().nullslast())
-            .first()
-        )
-        if movie:
-            return {"id": movie.id, "type": "movie", "title": movie.title}
+        for movie in db.query(Movie).filter(Movie.title.ilike(f"%{title}%")).all():
+            candidates.append({"id": movie.id, "type": "movie", "title": movie.title})
 
     if search_show:
-        show = (
-            db.query(TVShow)
-            .filter(TVShow.title.ilike(f"%{title}%"))
-            .order_by(TVShow.imdb_rating.desc().nullslast())
-            .first()
-        )
-        if show:
-            return {"id": show.id, "type": "tv_show", "title": show.title}
+        for show in db.query(TVShow).filter(TVShow.title.ilike(f"%{title}%")).all():
+            candidates.append({"id": show.id, "type": "tv_show", "title": show.title})
 
-    return None
+    if not candidates:
+        return None
+
+    search_lower = title.lower()
+
+    def _match_score(c: dict) -> tuple:
+        t = c["title"].lower()
+        if t == search_lower:
+            return (0, 0)
+        # ratio of search term length to result title length — higher = better match
+        ratio = len(search_lower) / max(len(t), 1)
+        return (1, -ratio)
+
+    candidates.sort(key=_match_score)
+    return candidates[0]
 
 
 def _execute_action(db: Session, user_id: int | None, plan: dict) -> str:
@@ -593,7 +614,7 @@ def handle_message(db: Session, user_message: str, conversation_messages=None, u
             return {"category": "DIRECT_ANSWER", "answer": answer}
 
         if func_name in ACTION_FUNCTION_NAMES:
-            action_plan = {"action": func_name, "title": args.get("title"), "content_type": None}
+            action_plan = {"action": func_name, "title": args.get("title"), "content_type": args.get("content_type")}
             return {"category": "ACTION", "answer": _execute_action(db, user_id, action_plan)}
 
         plan = _args_to_plan(args)
@@ -621,7 +642,7 @@ def handle_message_stream(db: Session, user_message: str, conversation_messages=
             return
 
         if func_name in ACTION_FUNCTION_NAMES:
-            action_plan = {"action": func_name, "title": args.get("title"), "content_type": None}
+            action_plan = {"action": func_name, "title": args.get("title"), "content_type": args.get("content_type")}
             yield _execute_action(db, user_id, action_plan)
             return
 
