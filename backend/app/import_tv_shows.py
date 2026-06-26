@@ -15,7 +15,7 @@ BASE_URL = "https://api.themoviedb.org/3"
 IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
 
 
-def get_genres():
+def _get_genres():
     url = f"{BASE_URL}/genre/tv/list"
     params = {
         "api_key": TMDB_API_KEY,
@@ -29,7 +29,7 @@ def get_genres():
     return {genre["id"]: genre["name"] for genre in genres}
 
 
-def get_tv_show_details(tmdb_id):
+def _get_tv_show_details(tmdb_id):
     url = f"{BASE_URL}/tv/{tmdb_id}"
     params = {
         "api_key": TMDB_API_KEY,
@@ -42,7 +42,7 @@ def get_tv_show_details(tmdb_id):
     return response.json()
 
 
-def get_tv_show_actors(tmdb_id):
+def _get_tv_show_actors(tmdb_id):
     url = f"{BASE_URL}/tv/{tmdb_id}/credits"
     params = {
         "api_key": TMDB_API_KEY,
@@ -58,7 +58,7 @@ def get_tv_show_actors(tmdb_id):
     return ", ".join(actors)
 
 
-def get_season_details(tmdb_id, season_number):
+def _get_season_details(tmdb_id, season_number):
     url = f"{BASE_URL}/tv/{tmdb_id}/season/{season_number}"
     params = {
         "api_key": TMDB_API_KEY,
@@ -77,7 +77,7 @@ def import_tv_shows(pages=3, import_episodes=True):
         return
 
     db = SessionLocal()
-    genre_map = get_genres()
+    genre_map = _get_genres()
 
     try:
         for page in range(1, pages + 1):
@@ -105,8 +105,8 @@ def import_tv_shows(pages=3, import_episodes=True):
                 if not tmdb_id or not title or not year or not poster_path or not backdrop_path:
                     continue
 
-                details = get_tv_show_details(tmdb_id)
-                actors = get_tv_show_actors(tmdb_id)
+                details = _get_tv_show_details(tmdb_id)
+                actors = _get_tv_show_actors(tmdb_id)
 
                 genre_names = [
                     genre_map.get(genre_id)
@@ -166,7 +166,7 @@ def import_tv_shows(pages=3, import_episodes=True):
                             db.commit()
                             db.refresh(season)
 
-                        season_details = get_season_details(tmdb_id, season_number)
+                        season_details = _get_season_details(tmdb_id, season_number)
                         episodes = season_details.get("episodes", [])
 
                         for episode_item in episodes:

@@ -12,7 +12,7 @@ BASE_URL = "https://api.themoviedb.org/3"
 IMAGE_BASE_URL = "https://image.tmdb.org/t/p/original"
 
 
-def get_genres():
+def _get_genres():
     url = f"{BASE_URL}/genre/movie/list"
     params = {
         "api_key": TMDB_API_KEY,
@@ -26,7 +26,7 @@ def get_genres():
     return {genre["id"]: genre["name"] for genre in genres}
 
 
-def get_movie_actors(movie_id):
+def _get_movie_actors(movie_id):
     url = f"{BASE_URL}/movie/{movie_id}/credits"
     params = {
         "api_key": TMDB_API_KEY,
@@ -87,7 +87,7 @@ def import_movies_by_year(year, pages=5):
                     "backdrop": f"{IMAGE_BASE_URL}{backdrop_path}",
                     "genre": ", ".join(genre_names),
                     "description": item.get("overview"),
-                    "actors": get_movie_actors(item["id"]),
+                    "actors": _get_movie_actors(item["id"]),
                 }
 
                 if existing_movie:

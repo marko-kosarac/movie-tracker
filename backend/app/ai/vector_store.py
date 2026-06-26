@@ -11,7 +11,7 @@ chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection(name="cinetrack_items")
 
 
-def create_embedding(text: str):
+def _create_embedding(text: str):
     response = client.embeddings.create(
         model="text-embedding-3-small",
         input=text
@@ -19,7 +19,7 @@ def create_embedding(text: str):
     return response.data[0].embedding
 
 
-def build_movie_document(movie: Movie) -> str:
+def _build_movie_document(movie: Movie) -> str:
     return (
         f"Movie title: {movie.title}\n"
         f"Type: Movie\n"
@@ -31,7 +31,7 @@ def build_movie_document(movie: Movie) -> str:
     )
 
 
-def build_tv_show_document(show: TVShow) -> str:
+def _build_tv_show_document(show: TVShow) -> str:
     return (
         f"TV show title: {show.title}\n"
         f"Type: TV Show\n"
@@ -53,9 +53,9 @@ def index_movies_and_shows(db: Session):
     metadatas = []
 
     for movie in movies:
-        doc = build_movie_document(movie)
+        doc = _build_movie_document(movie)
         documents.append(doc)
-        embeddings.append(create_embedding(doc))
+        embeddings.append(_create_embedding(doc))
         ids.append(f"movie_{movie.id}")
         metadatas.append({
             "id": movie.id,
@@ -69,9 +69,9 @@ def index_movies_and_shows(db: Session):
         })
 
     for show in shows:
-        doc = build_tv_show_document(show)
+        doc = _build_tv_show_document(show)
         documents.append(doc)
-        embeddings.append(create_embedding(doc))
+        embeddings.append(_create_embedding(doc))
         ids.append(f"tv_show_{show.id}")
         metadatas.append({
             "id": show.id,
@@ -94,7 +94,7 @@ def index_movies_and_shows(db: Session):
 
 
 def semantic_search(query: str, limit: int = 20, min_rating: float = 6.0) -> list[dict]:
-    query_embedding = create_embedding(query)
+    query_embedding = _create_embedding(query)
 
     results = collection.query(
         query_embeddings=[query_embedding],

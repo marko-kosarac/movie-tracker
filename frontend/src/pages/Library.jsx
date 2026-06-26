@@ -36,7 +36,7 @@ function Library({ watchlist, watched, removeFromWatchlist, removeFromWatched, m
     <div className="page">
       <h1 className="page-title">Library</h1>
 
-      <h2>Watchlist</h2>
+      <h2 className="section-title">Watchlist</h2>
 
       {watchlist.length === 0 ? (
         <p className="empty-message">No items in watchlist.</p>

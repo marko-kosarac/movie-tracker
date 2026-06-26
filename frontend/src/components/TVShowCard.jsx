@@ -43,18 +43,24 @@ function TVShowCard({
           </p>
         </div>
 
-        <div className="card-actions" onClick={handleActionClick}>
-          {showRemove ? (
-            <>
-              <button onClick={() => onRemove(tvShow.id)}>Remove</button>
-              <button onClick={() => onMarkWatched(tvShow)}>Watched</button>
-            </>
-          ) : (
-            <>
-
-            </>
-          )}
-        </div>
+        {showRemove && (
+          <div className="card-actions" onClick={handleActionClick}>
+            {!isWatched && (
+              <button
+                className="card-btn card-btn--watched"
+                onClick={() => onMarkWatched(tvShow)}
+              >
+                ✓ Watched
+              </button>
+            )}
+            <button
+              className="card-btn card-btn--remove"
+              onClick={() => onRemove(tvShow)}
+            >
+              ✕ Remove
+            </button>
+          </div>
+        )}
       </div>
     </Link>
   );

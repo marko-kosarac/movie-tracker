@@ -1,5 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { API_URL } from "../config";
 import "./MovieDetails.css";
 import "./TVShowDetails.css";
@@ -8,6 +8,7 @@ function TVShowDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
   const { id } = useParams();
   const [tvShow, setTvShow] = useState(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
+  const episodesListRef = useRef(null);
 
   useEffect(() => {
     fetch(`${API_URL}/tv-shows/${id}`)
@@ -45,8 +46,8 @@ function TVShowDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
           <h1>{tvShow.title}</h1>
 
           <p className="movie-details-meta">
-            {tvShow.year} •   IMDb ⭐ {tvShow.imdb_rating} • {seasonsCount}{" "}
-            {seasonsCount === 1 ? "Season" : "Seasons"} <p>{tvShow.genre}</p>
+            {tvShow.year} • IMDb ⭐ {tvShow.imdb_rating} • {seasonsCount}{" "}
+            {seasonsCount === 1 ? "Season" : "Seasons"} • {tvShow.genre}
           </p>
 
                     <div className="movie-details-actions">
@@ -103,15 +104,13 @@ function TVShowDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
             <button
                 className="episodes-arrow up"
                 onClick={() => {
-                document
-                    .querySelector(".episodes-list")
-                    .scrollBy({ top: -200, behavior: "smooth" });
+                  episodesListRef.current?.scrollBy({ top: -200, behavior: "smooth" });
                 }}
             >
                 ▲
             </button>
 
-            <div className="episodes-list">
+            <div className="episodes-list" ref={episodesListRef}>
                 {selectedSeason.episodes
                 .sort((a, b) => a.episode_number - b.episode_number)
                 .map((episode) => (
@@ -131,9 +130,7 @@ function TVShowDetails({ watchlist, watched, addToWatchlist, markAsWatched }) {
             <button
                 className="episodes-arrow down"
                 onClick={() => {
-                document
-                    .querySelector(".episodes-list")
-                    .scrollBy({ top: 200, behavior: "smooth" });
+                  episodesListRef.current?.scrollBy({ top: 200, behavior: "smooth" });
                 }}
             >
                 ▼

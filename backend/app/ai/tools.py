@@ -108,7 +108,7 @@ def search_tv_shows_by_filters(
     ]
 
 
-def get_movie_details(db: Session, movie_id: int):
+def _get_movie_details(db: Session, movie_id: int):
     movie = db.query(Movie).filter(Movie.id == movie_id).first()
 
     if not movie:
@@ -128,7 +128,7 @@ def get_movie_details(db: Session, movie_id: int):
     }
 
 
-def get_tv_show_details(db: Session, show_id: int):
+def _get_tv_show_details(db: Session, show_id: int):
     show = db.query(TVShow).filter(TVShow.id == show_id).first()
 
     if not show:

@@ -10,6 +10,7 @@ function AIChatWidget({ onListsChanged }) {
   const [loading, setLoading] = useState(false);
 
   const chatBodyRef = useRef(null);
+  const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -18,8 +19,11 @@ function AIChatWidget({ onListsChanged }) {
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, loading]);
+    if (isOpen) {
+      scrollToBottom();
+      textareaRef.current?.focus();
+    }
+  }, [isOpen, messages, loading]);
 
   const minimizeChat = () => {
     setIsOpen(false);
@@ -137,6 +141,7 @@ function AIChatWidget({ onListsChanged }) {
     } finally {
       setLoading(false);
       abortControllerRef.current = null;
+      textareaRef.current?.focus();
     }
   };
 
@@ -195,6 +200,7 @@ function AIChatWidget({ onListsChanged }) {
 
           <div className="ai-chat-footer">
             <textarea
+              ref={textareaRef}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Npr. Preporuči mi dobar triler..."

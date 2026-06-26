@@ -7,10 +7,6 @@ function Register() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  if (!location.state?.fromLogin) {
-    return <Navigate to="/" />;
-  }
-
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,6 +14,10 @@ function Register() {
   const [error, setError] = useState("");
 
   const passwordsMatch = password === confirmPassword;
+
+  if (!location.state?.fromLogin) {
+    return <Navigate to="/" />;
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();

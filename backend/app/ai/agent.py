@@ -1,6 +1,5 @@
 import json
-import re
-from openai import OpenAI
+from openai import OpenAI, APITimeoutError, APIConnectionError, APIStatusError
 from sqlalchemy.orm import Session
 
 from app.ai.vector_store import semantic_search, collection
@@ -11,147 +10,183 @@ from app.models.user_list import UserListItem
 
 client = OpenAI()
 
-
 MAX_HISTORY = 10
-VALID_MODES = {"DIRECT_ANSWER", "SEMANTIC_SEARCH", "DATABASE_SEARCH", "HYBRID_SEARCH", "ACTION"}
 
+ROUTER_SYSTEM_PROMPT = """
+You are the routing brain of MovieTracker AI. Call exactly one function based on the user's message.
+When generating direct answers, always reply in the same language the user wrote in.
 
-def build_conversation_context(conversation_messages=None) -> str:
-    if not conversation_messages:
-        return ""
+ROUTING RULES:
+- direct_answer: greetings, general movie/TV facts from knowledge, follow-up about titles already in conversation. NEVER for recommendation requests or "does X exist in the database" questions.
+- semantic_search: mood, vibe, atmosphere ("psychological thriller", "mind-bending", "dark", "mračno", "napeto", "tužno", "uzbudljivo", "romantično", "similar to X").
+- _database_search: exact filters only — specific genre, year, minimum rating. Also when user asks if a specific title exists ("da li ima X", "ima li X u bazi") — set title field.
+- _hybrid_search: mood/atmosphere COMBINED with exact filters. Also for genre + mood together ("mračna drama", "napeti triler").
+- Action functions: when user wants to add/remove items from their lists.
 
-    lines = []
-    for msg in conversation_messages[-MAX_HISTORY:]:
-        role = getattr(msg, "role", None) or msg.get("role")
-        content = getattr(msg, "content", None) or msg.get("content")
-        if role and content:
-            lines.append(f"{role}: {content}")
+GENRE — always translate to English: komedija→Comedy, horor→Horror, drama→Drama, akcija→Action, triler→Thriller, naučna fantastika→Science Fiction, animacija→Animation, dokumentarac→Documentary, romantika→Romance, krimić→Crime, avantura→Adventure, fantazija→Fantasy, misterija→Mystery.
+Mood/atmosphere words (mračan, napeto, uzbudljivo, tužan, dark, intense) go into semantic_query, NOT genre.
 
-    return "\n".join(lines)
+YEAR: use year only for exact single year. Use year_from for "newer than/noviji od/nakon". Use year_to for "older than/stariji od/prije".
+LIMITS: default 5. If user says "best/top/preporuči" without specifying rating, use min_rating=7.0.
+SPLIT REQUESTS: if user asks for N movies AND M shows separately, set movie_limit=N, tv_show_limit=M, limit=N+M.
 
-
-def _strip_json_fence(text: str) -> str:
-    text = text.strip()
-    match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if match:
-        return match.group(1).strip()
-    return text
-
-
-PLANNER_PROMPT = """
-You are the planning brain of MovieTracker AI.
-
-Analyze the latest user message together with the conversation context and return a JSON plan.
-
-Return ONLY valid JSON with no markdown fences, no explanation, nothing else.
-
-Schema:
-{
-  "mode": "DIRECT_ANSWER" | "SEMANTIC_SEARCH" | "DATABASE_SEARCH" | "HYBRID_SEARCH" | "ACTION",
-  "content_type": "movie" | "tv_show" | "both" | null,
-  "movie_limit": integer | null,
-  "tv_show_limit": integer | null,
-  "semantic_query": string | null,
-  "genre": string | null,
-  "year": integer | null,
-  "year_from": integer | null,
-  "year_to": integer | null,
-  "min_rating": number | null,
-  "limit": integer,
-  "action": "add_to_watchlist" | "add_to_watched" | "remove_from_watchlist" | "remove_from_watched" | "clear_watchlist" | "clear_watched" | null,
-  "title": string | null,
-  "answer": string | null
-}
-
-Rules:
-- DIRECT_ANSWER is ONLY for: pure factual questions about movies or TV shows from general knowledge (e.g. "what year was Inception released?", "what is IMDb?"), greetings, or follow-up questions about titles already visible in the conversation context. NEVER use DIRECT_ANSWER when the user wants a list of recommendations.
-- NEVER use DIRECT_ANSWER when the user asks whether a specific title exists in the MovieTracker database (e.g. "da li ima X", "is X in the database", "koji X filmovi su u bazi", "ima li X"). For these, use DATABASE_SEARCH so the actual database is checked. Set the "title" field to the movie/show name the user is asking about.
-- When mode is DIRECT_ANSWER AND the question is about movies, TV shows, IMDb, or MovieTracker app, OR it is a greeting — write your complete response in the "answer" field using the same language the user wrote in.
-- When mode is DIRECT_ANSWER but the question is unrelated to movies or TV (e.g. math, geography, science, general knowledge) — set answer to null so the system can properly redirect the user.
-- SEMANTIC_SEARCH for mood, vibe, atmosphere, similarity, or subgenre descriptions like "psychological thriller", "mind-bending", "dark", "mračno", "napeto", "tužno", "uzbudljivo", "romantično".
-- DATABASE_SEARCH for exact constraints: specific genre name, specific year, specific minimum rating — when there is no vague/semantic meaning.
-- HYBRID_SEARCH when the request combines any mood/atmosphere/vibe description with any exact filter (year, year range, rating). Also use HYBRID_SEARCH when a genre is mentioned alongside a year range or rating filter.
-- ACTION only when the user clearly wants to add/remove from watchlist or mark as watched.
-- If user says "best", "top", "good", or "preporuči" without specifying min_rating, set min_rating to 7.0.
-- If user does not specify limit, use 5.
-- For year constraints: use "year" ONLY for an exact single year (e.g. "iz 2010", "from 2010"). Use "year_from" for "newer than / noviji od / nakon" (e.g. "noviji od 2015" → year_from: 2016). Use "year_to" for "older than / stariji od / prije" (e.g. "stariji od 2000" → year_to: 1999). Never put a range into the "year" field.
-- Default content_type to "both" unless user clearly specifies movies or TV shows.
-
-GENRE RULES — very important:
-- The "genre" field must ALWAYS be in English, as stored in the database. Never put a local-language word in genre.
-- Translate genre names: komedija→Comedy, drama→Drama, horor→Horror, akcija→Action, triler→Thriller, naučna fantastika→Science Fiction, animacija→Animation, dokumentarac→Documentary, romantika→Romance, krimić→Crime, avantura→Adventure, fantazija→Fantasy, misterija→Mystery.
-- Mood/atmosphere words are NOT genres. Words like "mračan", "napeto", "uzbudljivo", "romantičan", "smiješan", "tužan", "misteriozno", "dark", "intense" must go into semantic_query, NOT into genre.
-- If the user says a genre word (komedija, horor, drama...) alongside a year/rating filter with NO mood words → DATABASE_SEARCH with genre in English.
-- If the user says a genre word WITH mood/atmosphere words (e.g. "mračna drama", "napeti triler") → HYBRID_SEARCH: put the translated genre in genre field AND include the mood in semantic_query.
-- For semantic_query, always write a rich descriptive English search phrase that fully captures the user's intent including genre and mood.
-
-- CRITICAL LIST DISTINCTION — two completely different lists:
-  - "lista gledanja" / "watchlist" = things the user WANTS TO WATCH in the future (not yet watched)
-  - "lista gledanih" / "watched" = things the user HAS ALREADY WATCHED
-
-- For ACTION mode, set "action" to one of the six values below. Set "title" to the exact title the user mentioned. Actions that affect "all" do not need a title.
-
-  - "add_to_watchlist": user wants to save something to watch LATER
-    Triggers: "dodaj u listu gledanja", "stavi na watchlist", "hoću da gledam X", "zapamti X", "sačuvaj X za gledanje", "add to watchlist", "want to watch X"
-
-  - "add_to_watched": user has ALREADY watched it and wants to mark it
-    Triggers: "dodaj u listu gledanih", "označiti kao gledano", "pogledao sam X", "odgledao X", "mark as watched", "already watched X", "add to watched"
-
-  - "remove_from_watchlist": remove a specific title from watchlist
-    Triggers: "izbaci X iz liste gledanja", "ukloni X sa watchliste", "obrisi X sa watchliste", "remove X from watchlist"
-
-  - "remove_from_watched": remove a specific title from watched list
-    Triggers: "izbaci X iz liste gledanih", "ukloni X iz gledanih", "remove X from watched"
-
-  - "clear_watchlist": remove ALL items from watchlist
-    Triggers: "očisti listu gledanja", "obriši sve sa watchliste", "obriši sve što hoću da gledam", "clear watchlist", "izbaci sve iz watchliste"
-
-  - "clear_watched": remove ALL items from watched list
-    Triggers: "očisti listu gledanih", "obriši sve gledane", "clear watched list", "izbaci sve iz gledanih"
-
-  - If user says just "obriši sve" / "izbaci sve" without specifying which list, default to "clear_watchlist".
-
-- IMPORTANT: If the user asks for a specific number of movies AND a specific number of TV shows separately (e.g. "jedan film i jedna serija", "2 filma i 3 serije", "one movie and two shows"), set content_type to "both", set movie_limit to the requested movie count, set tv_show_limit to the requested show count, and set limit to their sum. Otherwise leave movie_limit and tv_show_limit as null.
+LIST NAMES:
+- "lista gledanja" / "watchlist" = want to watch (future)
+- "lista gledanih" / "watched" = already watched (past)
+- "obriši sve" without specifying which list → clear_watchlist
 """
 
-
-def create_plan(user_message: str, conversation_messages=None) -> dict:
-    conversation_context = build_conversation_context(conversation_messages)
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
-            {"role": "system", "content": PLANNER_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Conversation context:\n{conversation_context}\n\n"
-                    f"Latest user message:\n{user_message}"
-                ),
+ROUTER_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "direct_answer",
+            "description": "Answer directly from knowledge: greetings, general movie/TV facts, follow-up questions about titles already in conversation. Never use for recommendations or database lookups.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "answer": {"type": "string", "description": "Complete response in the user's language. Empty string if question is unrelated to movies/TV."},
+                },
+                "required": ["answer"],
             },
-        ],
-    )
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "semantic_search",
+            "description": "Search by mood, vibe, atmosphere, or similarity. Use for: psychological, mind-bending, dark, mračno, napeto, tužno, uzbudljivo, similar to X.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "semantic_query": {"type": "string", "description": "Rich descriptive English phrase capturing mood and atmosphere"},
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show", "both"]},
+                    "limit": {"type": "integer"},
+                    "min_rating": {"type": "number"},
+                    "movie_limit": {"type": "integer"},
+                    "tv_show_limit": {"type": "integer"},
+                },
+                "required": ["semantic_query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "_database_search",
+            "description": "Search by exact filters: genre, year, rating. Also use when checking if a specific title exists in the database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show", "both"]},
+                    "genre": {"type": "string", "description": "Genre in English only"},
+                    "year": {"type": "integer", "description": "Exact year only, not a range"},
+                    "year_from": {"type": "integer", "description": "Minimum year (for newer than / noviji od)"},
+                    "year_to": {"type": "integer", "description": "Maximum year (for older than / stariji od)"},
+                    "min_rating": {"type": "number"},
+                    "limit": {"type": "integer"},
+                    "movie_limit": {"type": "integer"},
+                    "tv_show_limit": {"type": "integer"},
+                    "title": {"type": "string", "description": "Title to look up when user asks if it exists in the database"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "_hybrid_search",
+            "description": "Mood/atmosphere combined with exact filters (year, rating, genre). Use for 'mračna drama', 'napeti triler', mood + year/rating.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "semantic_query": {"type": "string", "description": "Rich descriptive English phrase"},
+                    "content_type": {"type": "string", "enum": ["movie", "tv_show", "both"]},
+                    "genre": {"type": "string"},
+                    "year": {"type": "integer"},
+                    "year_from": {"type": "integer"},
+                    "year_to": {"type": "integer"},
+                    "min_rating": {"type": "number"},
+                    "limit": {"type": "integer"},
+                    "movie_limit": {"type": "integer"},
+                    "tv_show_limit": {"type": "integer"},
+                },
+                "required": ["semantic_query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_to_watchlist",
+            "description": "Add a movie or TV show to the user's watchlist (to watch later)",
+            "parameters": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_to_watched",
+            "description": "Mark a movie or TV show as already watched",
+            "parameters": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_from_watchlist",
+            "description": "Remove a specific movie or TV show from the watchlist",
+            "parameters": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_from_watched",
+            "description": "Remove a specific movie or TV show from the watched list",
+            "parameters": {
+                "type": "object",
+                "properties": {"title": {"type": "string"}},
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_watchlist",
+            "description": "Remove ALL items from the user's watchlist",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_watched",
+            "description": "Remove ALL items from the user's watched list",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+]
 
-    raw_plan = _strip_json_fence(response.choices[0].message.content)
-
-    try:
-        plan = json.loads(raw_plan)
-        if plan.get("mode") not in VALID_MODES:
-            plan["mode"] = "SEMANTIC_SEARCH"
-        return plan
-    except json.JSONDecodeError:
-        return {
-            "mode": "SEMANTIC_SEARCH",
-            "content_type": "both",
-            "semantic_query": user_message,
-            "genre": None,
-            "year": None,
-            "min_rating": 6.0,
-            "limit": 5,
-            "action": None,
-        }
-
+ACTION_FUNCTION_NAMES = {
+    "add_to_watchlist", "add_to_watched",
+    "remove_from_watchlist", "remove_from_watched",
+    "clear_watchlist", "clear_watched",
+}
 
 DIRECT_SYSTEM_PROMPT = """
 You are MovieTracker AI assistant. Always reply in the same language the user wrote in.
@@ -182,11 +217,62 @@ Rules:
 - You may use conversation context to understand follow-up questions.
 """
 
+_GENRE_TRANSLATIONS = {
+    "komedija": "Comedy", "horor": "Horror", "drama": "Drama",
+    "akcija": "Action", "triler": "Thriller", "trileri": "Thriller",
+    "naučna fantastika": "Science Fiction", "sci-fi": "Science Fiction",
+    "animacija": "Animation", "dokumentarac": "Documentary",
+    "romantika": "Romance", "krimić": "Crime", "krimi": "Crime",
+    "avantura": "Adventure", "fantazija": "Fantasy", "misterija": "Mystery",
+    "biografija": "Biography", "istorija": "History", "sport": "Sport",
+    "mjuzikl": "Musical", "vestern": "Western",
+}
 
-def format_context(items: list[dict]) -> str:
+
+def _translate_genre(genre: str | None) -> str | None:
+    if not genre:
+        return genre
+    return _GENRE_TRANSLATIONS.get(genre.lower().strip(), genre)
+
+
+def _build_conversation_context(conversation_messages=None) -> str:
+    if not conversation_messages:
+        return ""
+    lines = []
+    for msg in conversation_messages[-MAX_HISTORY:]:
+        role = getattr(msg, "role", None) or msg.get("role")
+        content = getattr(msg, "content", None) or msg.get("content")
+        if role and content:
+            lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
+def _route_request(user_message: str, conversation_messages=None) -> tuple[str, dict]:
+    conversation_context = _build_conversation_context(conversation_messages)
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Conversation context:\n{conversation_context}\n\n"
+                    f"Latest user message:\n{user_message}"
+                ),
+            },
+        ],
+        tools=ROUTER_TOOLS,
+        tool_choice="required",
+    )
+    tool_call = response.choices[0].message.tool_calls[0]
+    args = json.loads(tool_call.function.arguments)
+    return tool_call.function.name, args
+
+
+def _format_context(items: list[dict]) -> str:
     if not items:
         return "Nema rezultata u bazi."
-
     return "\n\n".join(
         f"Title: {item.get('title')}\n"
         f"Type: {item.get('type')}\n"
@@ -200,7 +286,7 @@ def format_context(items: list[dict]) -> str:
 
 
 def _build_direct_messages(user_message: str, conversation_messages=None) -> list:
-    conversation_context = build_conversation_context(conversation_messages)
+    conversation_context = _build_conversation_context(conversation_messages)
     return [
         {"role": "system", "content": DIRECT_SYSTEM_PROMPT},
         {
@@ -214,8 +300,8 @@ def _build_direct_messages(user_message: str, conversation_messages=None) -> lis
 
 
 def _build_context_messages(user_message: str, items: list[dict], conversation_messages=None) -> list:
-    conversation_context = build_conversation_context(conversation_messages)
-    context = format_context(items)
+    conversation_context = _build_conversation_context(conversation_messages)
+    context = _format_context(items)
     return [
         {"role": "system", "content": CONTEXT_SYSTEM_PROMPT},
         {
@@ -229,36 +315,35 @@ def _build_context_messages(user_message: str, items: list[dict], conversation_m
     ]
 
 
-_GENRE_TRANSLATIONS = {
-    "komedija": "Comedy", "horor": "Horror", "drama": "Drama",
-    "akcija": "Action", "triler": "Thriller", "trileri": "Thriller",
-    "naučna fantastika": "Science Fiction", "sci-fi": "Science Fiction",
-    "animacija": "Animation", "dokumentarac": "Documentary",
-    "romantika": "Romance", "krimić": "Crime", "krimi": "Crime",
-    "avantura": "Adventure", "fantazija": "Fantasy", "misterija": "Mystery",
-    "biografija": "Biography", "istorija": "History", "sport": "Sport",
-    "mjuzikl": "Musical", "vestern": "Western",
-}
+def _args_to_plan(args: dict) -> dict:
+    return {
+        "content_type": args.get("content_type", "both"),
+        "limit": args.get("limit", 5),
+        "min_rating": args.get("min_rating", 6.0),
+        "semantic_query": args.get("semantic_query"),
+        "genre": _translate_genre(args.get("genre")),
+        "year": args.get("year"),
+        "year_from": args.get("year_from"),
+        "year_to": args.get("year_to"),
+        "movie_limit": args.get("movie_limit"),
+        "tv_show_limit": args.get("tv_show_limit"),
+        "title": args.get("title"),
+    }
 
-def _translate_genre(genre: str | None) -> str | None:
-    if not genre:
-        return genre
-    return _GENRE_TRANSLATIONS.get(genre.lower().strip(), genre)
 
-
-def database_search(db: Session, plan: dict) -> list[dict]:
+def _database_search(db: Session, plan: dict) -> list[dict]:
     content_type = plan.get("content_type") or "both"
-    genre = plan.get("genre")
-    year = plan.get("year")
-    year_from = plan.get("year_from")
-    year_to = plan.get("year_to")
-    min_rating = plan.get("min_rating")
     limit = plan.get("limit") or 5
     movie_limit = plan.get("movie_limit")
     tv_show_limit = plan.get("tv_show_limit")
-
-    title = plan.get("title")
-    filter_kwargs = dict(genre=_translate_genre(genre), min_rating=min_rating, year=year, year_from=year_from, year_to=year_to, title=title)
+    filter_kwargs = dict(
+        genre=_translate_genre(plan.get("genre")),
+        min_rating=plan.get("min_rating"),
+        year=plan.get("year"),
+        year_from=plan.get("year_from"),
+        year_to=plan.get("year_to"),
+        title=plan.get("title"),
+    )
 
     if movie_limit is not None or tv_show_limit is not None:
         results = []
@@ -270,10 +355,8 @@ def database_search(db: Session, plan: dict) -> list[dict]:
 
     fetch_limit = limit * 3
     results = []
-
     if content_type in ["movie", "both"]:
         results.extend(search_movies_by_filters(db=db, limit=fetch_limit, **filter_kwargs))
-
     if content_type in ["tv_show", "both"]:
         results.extend(search_tv_shows_by_filters(db=db, limit=fetch_limit, **filter_kwargs))
 
@@ -281,16 +364,15 @@ def database_search(db: Session, plan: dict) -> list[dict]:
     return results[:limit]
 
 
-def semantic_only_search(plan: dict, user_message: str) -> list[dict]:
+def _semantic_only_search(plan: dict, user_message: str) -> list[dict]:
     semantic_query = plan.get("semantic_query") or user_message
     limit = plan.get("limit") or 5
     min_rating = plan.get("min_rating") if plan.get("min_rating") is not None else 6.0
-
     pool = max(50, limit * 10)
     return semantic_search(query=semantic_query, limit=pool, min_rating=min_rating)[:limit]
 
 
-def hybrid_search(db: Session, plan: dict, user_message: str) -> list[dict]:
+def _hybrid_search(db: Session, plan: dict, user_message: str) -> list[dict]:
     semantic_query = plan.get("semantic_query") or user_message
     content_type = plan.get("content_type")
     year = plan.get("year")
@@ -355,7 +437,7 @@ def _find_item_by_title(db: Session, title: str, content_type: str | None) -> di
     return None
 
 
-def execute_action(db: Session, user_id: int | None, plan: dict) -> str:
+def _execute_action(db: Session, user_id: int | None, plan: dict) -> str:
     if not user_id:
         return "Moraš biti prijavljen da bi upravljao listama."
 
@@ -366,28 +448,19 @@ def execute_action(db: Session, user_id: int | None, plan: dict) -> str:
     if action == "add_to_watchlist":
         if not title:
             return "Navedi naziv filma ili serije koji želiš dodati u listu gledanja."
-
         item = _find_item_by_title(db, title, content_type)
         if not item:
             return f"Nisam pronašao '{title}' u bazi. Provjeri naziv i pokušaj ponovo."
-
         existing = db.query(UserListItem).filter(
             UserListItem.user_id == user_id,
             UserListItem.item_id == item["id"],
             UserListItem.item_type == item["type"],
         ).first()
-
         if existing:
             if existing.list_type == "watchlist":
                 return f"'{item['title']}' je već u tvojoj listi gledanja."
             return f"'{item['title']}' je već u tvojoj listi pogledanog."
-
-        db.add(UserListItem(
-            user_id=user_id,
-            item_id=item["id"],
-            item_type=item["type"],
-            list_type="watchlist",
-        ))
+        db.add(UserListItem(user_id=user_id, item_id=item["id"], item_type=item["type"], list_type="watchlist"))
         db.commit()
         kind = "film" if item["type"] == "movie" else "serija"
         return f"✓ '{item['title']}' ({kind}) je dodan u tvoju listu gledanja."
@@ -395,38 +468,28 @@ def execute_action(db: Session, user_id: int | None, plan: dict) -> str:
     if action == "remove_from_watchlist":
         if not title:
             return "Navedi naziv filma ili serije koji želiš izbaciti iz liste gledanja."
-
         item = _find_item_by_title(db, title, content_type)
         if not item:
             return f"Nisam pronašao '{title}' u bazi. Provjeri naziv i pokušaj ponovo."
-
         entry = db.query(UserListItem).filter(
             UserListItem.user_id == user_id,
             UserListItem.item_id == item["id"],
             UserListItem.item_type == item["type"],
             UserListItem.list_type == "watchlist",
         ).first()
-
         if not entry:
             return f"'{item['title']}' nije u tvojoj listi gledanja."
-
         db.delete(entry)
         db.commit()
         return f"✓ '{item['title']}' je uklonjen iz tvoje liste gledanja."
 
     if action == "clear_watchlist":
-        deleted = (
-            db.query(UserListItem)
-            .filter(
-                UserListItem.user_id == user_id,
-                UserListItem.list_type == "watchlist",
-            )
-            .all()
-        )
-
+        deleted = db.query(UserListItem).filter(
+            UserListItem.user_id == user_id,
+            UserListItem.list_type == "watchlist",
+        ).all()
         if not deleted:
             return "Tvoja lista gledanja je već prazna."
-
         count = len(deleted)
         for entry in deleted:
             db.delete(entry)
@@ -436,17 +499,14 @@ def execute_action(db: Session, user_id: int | None, plan: dict) -> str:
     if action == "add_to_watched":
         if not title:
             return "Navedi naziv filma ili serije koji želiš označiti kao pogledano."
-
         item = _find_item_by_title(db, title, content_type)
         if not item:
             return f"Nisam pronašao '{title}' u bazi. Provjeri naziv i pokušaj ponovo."
-
         existing = db.query(UserListItem).filter(
             UserListItem.user_id == user_id,
             UserListItem.item_id == item["id"],
             UserListItem.item_type == item["type"],
         ).first()
-
         if existing:
             if existing.list_type == "watched":
                 return f"'{item['title']}' je već u tvojoj listi gledanih."
@@ -454,13 +514,7 @@ def execute_action(db: Session, user_id: int | None, plan: dict) -> str:
             db.commit()
             kind = "film" if item["type"] == "movie" else "serija"
             return f"✓ '{item['title']}' ({kind}) je premješten iz liste gledanja u listu gledanih."
-
-        db.add(UserListItem(
-            user_id=user_id,
-            item_id=item["id"],
-            item_type=item["type"],
-            list_type="watched",
-        ))
+        db.add(UserListItem(user_id=user_id, item_id=item["id"], item_type=item["type"], list_type="watched"))
         db.commit()
         kind = "film" if item["type"] == "movie" else "serija"
         return f"✓ '{item['title']}' ({kind}) je dodan u tvoju listu gledanih."
@@ -468,38 +522,28 @@ def execute_action(db: Session, user_id: int | None, plan: dict) -> str:
     if action == "remove_from_watched":
         if not title:
             return "Navedi naziv filma ili serije koji želiš izbaciti iz liste gledanih."
-
         item = _find_item_by_title(db, title, content_type)
         if not item:
             return f"Nisam pronašao '{title}' u bazi. Provjeri naziv i pokušaj ponovo."
-
         entry = db.query(UserListItem).filter(
             UserListItem.user_id == user_id,
             UserListItem.item_id == item["id"],
             UserListItem.item_type == item["type"],
             UserListItem.list_type == "watched",
         ).first()
-
         if not entry:
             return f"'{item['title']}' nije u tvojoj listi gledanih."
-
         db.delete(entry)
         db.commit()
         return f"✓ '{item['title']}' je uklonjen iz tvoje liste gledanih."
 
     if action == "clear_watched":
-        deleted = (
-            db.query(UserListItem)
-            .filter(
-                UserListItem.user_id == user_id,
-                UserListItem.list_type == "watched",
-            )
-            .all()
-        )
-
+        deleted = db.query(UserListItem).filter(
+            UserListItem.user_id == user_id,
+            UserListItem.list_type == "watched",
+        ).all()
         if not deleted:
             return "Tvoja lista gledanih je već prazna."
-
         count = len(deleted)
         for entry in deleted:
             db.delete(entry)
@@ -518,36 +562,6 @@ def _llm_call(messages: list) -> str:
     return response.choices[0].message.content
 
 
-def handle_message(db: Session, user_message: str, conversation_messages=None, user_id: int | None = None) -> dict:
-    conversation_messages = (conversation_messages or [])[-MAX_HISTORY:]
-    plan = create_plan(user_message, conversation_messages)
-    mode = plan.get("mode", "SEMANTIC_SEARCH")
-
-    print("\n===== AI PLAN =====")
-    print(plan)
-    print("===================\n")
-
-    if mode == "DIRECT_ANSWER":
-        answer = plan.get("answer") or _llm_call(_build_direct_messages(user_message, conversation_messages))
-
-    elif mode == "DATABASE_SEARCH":
-        items = database_search(db, plan)
-        answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
-
-    elif mode == "HYBRID_SEARCH":
-        items = hybrid_search(db, plan, user_message) if collection.count() > 0 else database_search(db, plan)
-        answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
-
-    elif mode == "ACTION":
-        answer = execute_action(db, user_id, plan)
-
-    else:
-        items = semantic_only_search(plan, user_message) if collection.count() > 0 else database_search(db, plan)
-        answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
-
-    return {"category": mode, "plan": plan, "answer": answer}
-
-
 def _llm_stream(messages: list):
     stream = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -561,32 +575,61 @@ def _llm_stream(messages: list):
             yield delta
 
 
+def _execute_search(func_name: str, plan: dict, db: Session, user_message: str) -> list[dict]:
+    if func_name == "semantic_search":
+        return _semantic_only_search(plan, user_message) if collection.count() > 0 else _database_search(db, plan)
+    if func_name == "_database_search":
+        return _database_search(db, plan)
+    return _hybrid_search(db, plan, user_message) if collection.count() > 0 else _database_search(db, plan)
+
+
+def handle_message(db: Session, user_message: str, conversation_messages=None, user_id: int | None = None) -> dict:
+    try:
+        conversation_messages = (conversation_messages or [])[-MAX_HISTORY:]
+        func_name, args = _route_request(user_message, conversation_messages)
+
+        if func_name == "direct_answer":
+            answer = args.get("answer") or _llm_call(_build_direct_messages(user_message, conversation_messages))
+            return {"category": "DIRECT_ANSWER", "answer": answer}
+
+        if func_name in ACTION_FUNCTION_NAMES:
+            action_plan = {"action": func_name, "title": args.get("title"), "content_type": None}
+            return {"category": "ACTION", "answer": _execute_action(db, user_id, action_plan)}
+
+        plan = _args_to_plan(args)
+        items = _execute_search(func_name, plan, db, user_message)
+        answer = _llm_call(_build_context_messages(user_message, items, conversation_messages))
+        return {"category": func_name.upper(), "answer": answer}
+
+    except (APITimeoutError, APIConnectionError):
+        return {"category": "ERROR", "plan": {}, "answer": "AI servis trenutno nije dostupan. Provjeri internet konekciju i pokušaj ponovo."}
+    except APIStatusError as e:
+        return {"category": "ERROR", "plan": {}, "answer": f"Greška AI servisa ({e.status_code}). Pokušaj ponovo za koji trenutak."}
+
+
 def handle_message_stream(db: Session, user_message: str, conversation_messages=None, user_id: int | None = None):
-    conversation_messages = (conversation_messages or [])[-MAX_HISTORY:]
-    plan = create_plan(user_message, conversation_messages)
-    mode = plan.get("mode", "SEMANTIC_SEARCH")
+    try:
+        conversation_messages = (conversation_messages or [])[-MAX_HISTORY:]
+        func_name, args = _route_request(user_message, conversation_messages)
 
-    print("\n===== AI STREAM PLAN =====")
-    print(plan)
-    print("==========================\n")
+        if func_name == "direct_answer":
+            answer = args.get("answer")
+            if answer:
+                yield answer
+            else:
+                yield from _llm_stream(_build_direct_messages(user_message, conversation_messages))
+            return
 
-    if mode == "DIRECT_ANSWER":
-        if plan.get("answer"):
-            yield plan["answer"]
-        else:
-            yield from _llm_stream(_build_direct_messages(user_message, conversation_messages))
+        if func_name in ACTION_FUNCTION_NAMES:
+            action_plan = {"action": func_name, "title": args.get("title"), "content_type": None}
+            yield _execute_action(db, user_id, action_plan)
+            return
 
-    elif mode == "DATABASE_SEARCH":
-        items = database_search(db, plan)
+        plan = _args_to_plan(args)
+        items = _execute_search(func_name, plan, db, user_message)
         yield from _llm_stream(_build_context_messages(user_message, items, conversation_messages))
 
-    elif mode == "HYBRID_SEARCH":
-        items = hybrid_search(db, plan, user_message) if collection.count() > 0 else database_search(db, plan)
-        yield from _llm_stream(_build_context_messages(user_message, items, conversation_messages))
-
-    elif mode == "ACTION":
-        yield execute_action(db, user_id, plan)
-
-    else:
-        items = semantic_only_search(plan, user_message) if collection.count() > 0 else database_search(db, plan)
-        yield from _llm_stream(_build_context_messages(user_message, items, conversation_messages))
+    except (APITimeoutError, APIConnectionError):
+        yield "AI servis trenutno nije dostupan. Provjeri internet konekciju i pokušaj ponovo."
+    except APIStatusError as e:
+        yield f"Greška AI servisa ({e.status_code}). Pokušaj ponovo za koji trenutak."
